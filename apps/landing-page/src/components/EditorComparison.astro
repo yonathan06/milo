@@ -1,0 +1,51 @@
+---
+import type { Locale, Translations } from '../i18n/ui';
+import { useTranslations } from '../i18n/utils';
+interface Props { locale: Locale; content: Translations; }
+const { locale, content } = Astro.props;
+const t = useTranslations(locale, content);
+const copy = {
+  before: t('comparison.before'),
+  after: t('comparison.after'),
+  headline: t('comparison.headline'),
+  proof: t('comparison.proof'),
+};
+---
+<section class="editor-comparison" aria-labelledby="comparison-heading">
+  <div class="comparison-card">
+    <h2 id="comparison-heading">
+      <span class="alternative"><s>{copy.before} <bdi dir="ltr">$1,500</bdi> {copy.after}</s></span>
+      <span>{copy.headline}</span>
+      <span class="proof">{copy.proof}</span>
+    </h2>
+  </div>
+</section>
+
+<style>
+  .editor-comparison { max-width: 1200px; margin-inline: auto; padding: 0 36px 80px; }
+  .comparison-card { padding: 64px; border: 1px solid #d8e5dc; border-radius: 28px; background: #e7eee9; text-align: center; }
+  h2 { max-width: 850px; margin: 0 auto; font-size: clamp(30px, 4vw, 52px); line-height: 1.2; font-weight: 500; letter-spacing: -1.5px; text-wrap: balance; }
+  h2 span { display: block; }
+  .alternative { margin-bottom: 12px; color: #567264; }
+  .proof { margin-top: 24px; }
+  /* Paint each wrapped line independently of the loaded font's strike metrics. */
+  .alternative s {
+    text-decoration: none;
+    background-image: linear-gradient(currentColor, currentColor);
+    background-position: 0 52%;
+    background-size: 100% 2px;
+    background-repeat: no-repeat;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  bdi { white-space: nowrap; color: #173d32; }
+  :global([dir="rtl"]) h2 { letter-spacing: 0; line-height: 1.35; }
+  @media (max-width: 900px) {
+    .editor-comparison { padding: 0 24px 48px; }
+    .comparison-card { padding: 40px 24px; }
+  }
+  @media (max-width: 380px) {
+    .editor-comparison { padding-inline: 16px; }
+    .comparison-card { padding-inline: 20px; }
+  }
+</style>

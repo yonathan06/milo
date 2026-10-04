@@ -1,0 +1,22 @@
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/fonts/dm-sans-regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/fonts/dm-sans-medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #f4f7f5; color: #173d32; font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
+a { -webkit-tap-highlight-color: transparent; }
+svg { flex-shrink: 0; display: block; }
+a:focus-visible { outline: 3px solid #247557; outline-offset: 6px; }
+::selection { background: #c6e4d5; }

@@ -1,0 +1,10 @@
+---
+import LandingPage from '../../components/LandingPage.astro';
+import { segmentSlugs, type Segment } from '../../i18n/segments';
+export function getStaticPaths() {
+  return ['he', 'de'].flatMap(locale => segmentSlugs.map(segment => ({ params: { locale, segment }, props: { segment } })));
+}
+interface Props { segment: Segment; }
+const { segment } = Astro.props;
+---
+<LandingPage {segment} />

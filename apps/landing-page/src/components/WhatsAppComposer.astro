@@ -1,0 +1,18 @@
+---
+import Icon from './Icon.astro';
+interface Props { placeholder: string; }
+const { placeholder } = Astro.props;
+---
+<div class="wa-composer" aria-hidden="true">
+  <Icon name="plus" size={24} />
+  <div class="field"><span>{placeholder}</span><Icon name="smile" size={20} /></div>
+  <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 7h4l2-3h6l2 3h4v13H3Z" stroke-linejoin="round"/><circle cx="12" cy="13" r="4"/></svg>
+  <Icon name="mic" size={23} />
+</div>
+<style>
+  .wa-composer { display: flex; align-items: center; flex-shrink: 0; gap: 12px; padding: 10px 12px; background: #f6f6f6; border-top: 1px solid #e1e3e5; color: #008069; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #d1d7db; border-radius: 20px; background: white; color: #8696a0; font-size: 13px; }
+  .field span { overflow: hidden; white-space: nowrap; }
+  @media (max-width: 380px) { .wa-composer { gap: 7px; padding-inline: 8px; } }
+  @media (max-height: 650px) { .wa-composer { padding-block: 6px; } }
+</style>

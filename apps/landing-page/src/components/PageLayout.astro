@@ -1,0 +1,32 @@
+---
+import CountrySelector from './CountrySelector.astro';
+import SiteFooter from './SiteFooter.astro';
+import { languages, directions, type Locale } from '../i18n/ui';
+import { getLangFromUrl, getLocaleNeutralPath, useTranslatedPath } from '../i18n/utils';
+import '../styles/global.css';
+interface Props { title: string; description: string; }
+const { title, description } = Astro.props;
+const locale = getLangFromUrl(Astro.url);
+const translatePath = useTranslatedPath(locale);
+const pagePath = getLocaleNeutralPath(Astro.url).split(/[?#]/)[0];
+const canonical = new URL(translatePath(pagePath), Astro.site);
+---
+<!doctype html>
+<html lang={locale} dir={directions[locale]}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f7f5" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+    <link rel="canonical" href={canonical} />
+    {Object.keys(languages).map(lang => <link rel="alternate" hreflang={lang} href={new URL(translatePath(pagePath, lang as Locale), Astro.site)} />)}
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/fonts/dm-sans-medium.ttf" as="font" type="font/ttf" crossorigin />
+  </head>
+  <body>
+    <CountrySelector {locale} />
+    <main><slot /></main>
+    <SiteFooter {locale} />
+  </body>
+</html>

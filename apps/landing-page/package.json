@@ -1,0 +1,21 @@
+{
+  "name": "landing-page",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "test": "node --experimental-strip-types tests/validate-i18n.ts && node --experimental-strip-types tests/validate-content.ts && node --experimental-strip-types tests/validate-whatsapp.ts && node tests/validate-presentation.js && npm run build && node --experimental-strip-types tests/validate-build.js"
+  },
+  "dependencies": {
+    "astro": "^7.3.4"
+  },
+  "allowScripts": {
+    "esbuild": true
+  }
+}

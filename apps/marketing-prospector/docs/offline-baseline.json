@@ -1,0 +1,19 @@
+{
+  "sourceSha256": "eef5b15059b84ce3a1f40f58dd19fc34a0d83e01ae266168ec539e89cd619581",
+  "corpusTotal": 24,
+  "knownRelevant": 16,
+  "results": [
+    { "segment": "wedding", "recalled": 2, "topRankedCount": 3, "topRelevantCount": 3, "queries": 7, "inspected": 2, "blocked": 1, "simulatedSearchCostMicros": 35000 },
+    { "segment": "family_event", "recalled": 2, "topRankedCount": 3, "topRelevantCount": 3, "queries": 7, "inspected": 2, "blocked": 1, "simulatedSearchCostMicros": 35000 },
+    { "segment": "company_event", "recalled": 2, "topRankedCount": 3, "topRelevantCount": 3, "queries": 7, "inspected": 2, "blocked": 1, "simulatedSearchCostMicros": 35000 },
+    { "segment": "professional_planner", "recalled": 2, "topRankedCount": 3, "topRelevantCount": 3, "queries": 7, "inspected": 2, "blocked": 1, "simulatedSearchCostMicros": 35000 }
+  ],
+  "recall": 0.5,
+  "topRankedPrecision": 1,
+  "correctParentDeduplication": false,
+  "unsupportedVerifiedLeaderContactClaims": 0,
+  "verifiedLeaders": 0,
+  "stages": { "queries": 28, "shortlisted": 12, "inspected": 8, "blocked": 4, "scored": 12 },
+  "simulatedCostMicros": 144400,
+  "method": "Executed stopped pre-community source snapshot offline with identical synthetic fixture search/page corpus, validated access walls and deterministic qualification responses. Same frozen queries isolate pipeline differences, not planning/model quality. No paid calls. Baseline is frozen evaluation data, not a shipped legacy runtime."
+}

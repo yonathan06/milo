@@ -1,0 +1,31 @@
+async (page) => {
+  const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto('http://localhost:4321/weddings/');
+  await page.evaluate(() => document.fonts.ready);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth === innerWidth), 'Mobile horizontal overflow');
+  assert(await page.locator('.cta').evaluate(el => el.getBoundingClientRect().bottom < innerHeight), 'CTA not visible above fold');
+  assert(await page.evaluate(() => [...document.images].filter(image => image.loading !== 'lazy').every(image => image.complete && image.naturalWidth > 0)), 'Mobile image failed');
+  await page.screenshot({ path: '.playwright-cli/milo-mobile-full.png', fullPage: true });
+  assert(await page.locator('video, audio, .chat button, .chat [tabindex]').count() === 0, 'Chat mock must be non-interactive');
+  await page.locator('.recap-preview').tap();
+  assert(await page.locator('.recap-preview img').isVisible(), 'Static recap preview missing');
+  assert(await page.locator('video, audio').count() === 0, 'Tap must not create a media player');
+  assert(await page.evaluate(() => !performance.getEntriesByType('resource').some(entry => /\.(mp4|webm)(\?|$)/.test(entry.name))), 'Page must not load video assets');
+  const href = await page.locator('.cta').getAttribute('href');
+  await page.context().route('https://wa.me/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>WhatsApp destination test</title>' }));
+  const popupPromise = page.waitForEvent('popup');
+  await page.locator('.cta').tap();
+  const popup = await popupPromise;
+  await popup.waitForLoadState();
+  assert(popup.url() === href, 'Mobile CTA opened wrong destination');
+  await popup.close();
+  await page.context().unroute('https://wa.me/**');
+  await page.goto('http://localhost:4321/weddings/');
+  await page.evaluate(() => document.fonts.ready);
+  await page.screenshot({ path: '.playwright-cli/milo-mobile.png' });
+  assert(errors.length === 0, `Mobile errors: ${errors.join('; ')}`);
+  return { status: 'passed', viewport: page.viewportSize(), userAgent: await page.evaluate(() => navigator.userAgent), staticPreview: 'passed', ctaNavigation: 'passed (external destination stubbed)', errors };
+}

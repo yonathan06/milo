@@ -1,0 +1,26 @@
+---
+import PageLayout from './PageLayout.astro';
+import HeroSection from './HeroSection.astro';
+import SegmentPhonePreview from './SegmentPhonePreview.astro';
+import EditorComparison from './EditorComparison.astro';
+import ScrollConversation from './ScrollConversation.astro';
+import ClosingCta from './ClosingCta.astro';
+import { getLandingCopy } from './landing-copy';
+import { getChatUrl } from './whatsapp';
+import { getSegmentUI, type Segment } from '../i18n/segments';
+import { getLangFromUrl } from '../i18n/utils';
+interface Props { segment: Segment; }
+const { segment } = Astro.props;
+const locale = getLangFromUrl(Astro.url);
+const content = getSegmentUI(locale, segment);
+const copy = getLandingCopy(locale, content, segment);
+const chatUrl = getChatUrl(content['whatsapp.prefill'], import.meta.env.PUBLIC_WHATSAPP_NUMBER);
+---
+<PageLayout title={copy.title} description={copy.description}>
+  <HeroSection {copy} {chatUrl}>
+    <SegmentPhonePreview slot="preview" {locale} {segment} />
+  </HeroSection>
+  <EditorComparison {locale} {content} />
+  <ScrollConversation {locale} {content} media={copy.media} />
+  <ClosingCta heading={content['closing.heading']} {chatUrl} label={copy.cta} />
+</PageLayout>

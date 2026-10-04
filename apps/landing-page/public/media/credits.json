@@ -1,0 +1,18 @@
+{
+  "license": "https://www.pexels.com/license/",
+  "usage": "Stock photographs used in illustrative video previews, not actual customer recordings or Milo outputs. Downloaded at 960px width and locally cropped/compressed for the existing preview frames.",
+  "photos": [
+    { "file": "company-presentation.jpg", "source": "https://www.pexels.com/photo/speaker-presenting-at-indoor-conference-29708277/", "download": "https://images.pexels.com/photos/29708277/pexels-photo-29708277.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "company-conference.jpg", "source": "https://www.pexels.com/photo/hybrid-conference-presentation-in-london-29180750/", "download": "https://images.pexels.com/photos/29180750/pexels-photo-29180750.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "company-networking.jpg", "source": "https://www.pexels.com/photo/group-of-people-wearing-long-sleeves-talking-in-a-room-8761649/", "download": "https://images.pexels.com/photos/8761649/pexels-photo-8761649.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "company-celebration.jpg", "source": "https://www.pexels.com/photo/people-making-a-toast-6762296/", "download": "https://images.pexels.com/photos/6762296/pexels-photo-6762296.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "family-birthday.jpg", "source": "https://www.pexels.com/photo/family-with-children-celebrating-birthday-with-cake-7328330/", "download": "https://images.pexels.com/photos/7328330/pexels-photo-7328330.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "family-celebration.jpg", "source": "https://www.pexels.com/photo/a-happy-family-celebrating-a-birthday-7921573/", "download": "https://images.pexels.com/photos/7921573/pexels-photo-7921573.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "family-gathering.jpg", "source": "https://www.pexels.com/photo/mother-and-children-celebrating-birthday-4868647/", "download": "https://images.pexels.com/photos/4868647/pexels-photo-4868647.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "family-candles.jpg", "source": "https://www.pexels.com/photo/candle-blowing-in-a-birthday-celebration-of-a-child-with-her-parents-and-relatives-7180733/", "download": "https://images.pexels.com/photos/7180733/pexels-photo-7180733.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "friends-dancing.jpg", "source": "https://www.pexels.com/photo/group-of-friends-celebrating-together-7221457/", "download": "https://images.pexels.com/photos/7221457/pexels-photo-7221457.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "friends-confetti.jpg", "source": "https://www.pexels.com/photo/friends-celebrating-together-9476090/", "download": "https://images.pexels.com/photos/9476090/pexels-photo-9476090.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "friends-celebration.jpg", "source": "https://www.pexels.com/photo/friends-celebrating-and-having-a-party-10578376/", "download": "https://images.pexels.com/photos/10578376/pexels-photo-10578376.jpeg?auto=compress&cs=tinysrgb&w=960" },
+    { "file": "friends-beach-party.jpg", "source": "https://www.pexels.com/photo/friends-partying-at-the-beach-7568987/", "download": "https://images.pexels.com/photos/7568987/pexels-photo-7568987.jpeg?auto=compress&cs=tinysrgb&w=960" }
+  ]
+}

@@ -1,0 +1,265 @@
+---
+import Icon from './Icon.astro';
+import WhatsAppHeader from './WhatsAppHeader.astro';
+import WhatsAppComposer from './WhatsAppComposer.astro';
+import type { Locale, Translations } from '../i18n/ui';
+import type { SegmentMedia } from '../i18n/segments';
+import { useTranslations } from '../i18n/utils';
+interface Props { locale: Locale; content: Translations; media: SegmentMedia; }
+const { locale, content, media } = Astro.props;
+const t = useTranslations(locale, content);
+const copy = {
+  label: t('conversation.label'),
+  scroll: t('conversation.scroll'),
+  online: t('chat.online'),
+  verified: t('chat.verified'),
+  message: t('chat.message'),
+  today: t('chat.today'),
+  demo: t('conversation.demo'),
+  you: t('conversation.you'),
+  request: t('conversation.request'),
+  reply: t('conversation.reply'),
+  upload: t('conversation.upload'),
+  payment: t('conversation.payment'),
+  suggestions: t('conversation.suggestions'),
+  confirm: t('conversation.confirm'),
+  approval: t('conversation.approval'),
+  working: t('conversation.working'),
+  done: t('conversation.done'),
+  recap: t('conversation.recap'),
+  highlights: t('conversation.highlights'),
+  image: t('conversation.image'),
+};
+const images = media.clips;
+// Use the same list for the proposal and the approved deliverables.
+const videos = [{ title: copy.recap, image: media.result }, { title: copy.highlights, image: media.highlights }];
+---
+<section class="scroll-conversation" aria-label={copy.label} data-scroll-conversation>
+  <div class="conversation-stage">
+  <div class="phone">
+    <WhatsAppHeader status={copy.online} verified={copy.verified} />
+    <div class="message-viewport">
+    <ol class="messages">
+      <li class="day">{copy.today}</li>
+      <li class="message-row sent" data-message>
+        <div class="message-bubble">
+          <span class="sender">{copy.you}</span>
+          <p>{copy.request}</p>
+          <span class="meta" aria-hidden="true">11:42 <Icon name="check" size={16} /></span>
+        </div>
+      </li>
+      <li class="message-row received" data-message>
+        <div class="message-bubble">
+          <span class="sender">Milo</span>
+          <p>{copy.reply}</p>
+          <span class="meta" aria-hidden="true">11:42</span>
+        </div>
+      </li>
+      <li class="message-row sent" data-message>
+        <div class="message-bubble upload">
+          <span class="sender">{copy.you}</span>
+          <div class="upload-grid" aria-hidden="true">
+            {images.map((image, index) => (
+              <div class="thumbnail">
+                <img src={image} alt="" width="240" height="160" loading="lazy" />
+                {index === 3 ? <span class="remaining">+47</span> : <span class="video-icon"><Icon name="video" size={18} /></span>}
+              </div>
+            ))}
+          </div>
+          <p class="upload-label"><Icon name="video" size={18} />{copy.upload}</p>
+          <span class="meta" aria-hidden="true">11:43 <Icon name="check" size={16} /></span>
+        </div>
+      </li>
+      <li class="message-row received" data-message>
+        <div class="message-bubble">
+          <span class="sender">Milo</span>
+          <p>{copy.payment}</p>
+          <span class="meta" aria-hidden="true">11:44</span>
+        </div>
+      </li>
+      <li class="message-row received" data-message>
+        <div class="message-bubble">
+          <span class="sender">Milo</span>
+          <p>{copy.suggestions}</p>
+          <ul class="suggested-videos">
+            {videos.map(video => <li>{video.title}</li>)}
+          </ul>
+          <p>{copy.confirm}</p>
+          <span class="meta" aria-hidden="true">11:44</span>
+        </div>
+      </li>
+      <li class="message-row sent" data-message>
+        <div class="message-bubble">
+          <span class="sender">{copy.you}</span>
+          <p>{copy.approval}</p>
+          <span class="meta" aria-hidden="true">11:45 <Icon name="check" size={16} /></span>
+        </div>
+      </li>
+      <li class="message-row received" data-message>
+        <div class="message-bubble">
+          <span class="sender">Milo</span>
+          <p>{copy.working}</p>
+          <span class="meta" aria-hidden="true">11:45</span>
+        </div>
+      </li>
+      <li class="message-row received" data-message>
+        <div class="message-bubble finished">
+          <span class="sender">Milo</span>
+          <p>{copy.done}</p>
+          <div class="results">
+            {videos.map((video) => (
+              <figure>
+                <div class="result-image">
+                  <img src={video.image} alt={copy.image} width="240" height="160" loading="lazy" />
+                  <span class="play" aria-hidden="true"><Icon name="play" size={22} /></span>
+                </div>
+                <figcaption>{video.title}</figcaption>
+              </figure>
+            ))}
+          </div>
+          <span class="meta" aria-hidden="true">11:48</span>
+        </div>
+      </li>
+    </ol>
+    </div>
+    <WhatsAppComposer placeholder={copy.message} />
+  </div>
+  <p class="demo-note">{copy.demo}</p>
+  <div class="scroll-indicator">
+    <span>{copy.scroll}</span>
+    <svg class="scroll-arrow" width="24" height="40" viewBox="0 0 24 40" fill="none" aria-hidden="true">
+      <path d="M12 3v32m-7-7 7 7 7-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>
+  </div>
+  </div>
+</section>
+
+<script>
+  function initConversations() {
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    document.querySelectorAll<HTMLElement>('[data-scroll-conversation]').forEach((conversation) => {
+      if (conversation.dataset.initialized) return;
+      conversation.dataset.initialized = 'true';
+      const messages = [...conversation.querySelectorAll<HTMLElement>('[data-message]')];
+      conversation.style.setProperty('--message-count', String(messages.length));
+      const stage = conversation.querySelector<HTMLElement>('.conversation-stage')!;
+      const viewport = conversation.querySelector<HTMLElement>('.message-viewport')!;
+      const list = conversation.querySelector<HTMLElement>('.messages')!;
+      let frame = 0;
+      let disposed = false;
+
+      const update = () => {
+        frame = 0;
+        if (motion.matches) return;
+        const distance = conversation.offsetHeight - stage.offsetHeight;
+        const progress = Math.min(1, Math.max(0, -conversation.getBoundingClientRect().top / Math.max(1, distance)));
+        const active = Math.min(messages.length - 1, Math.floor(progress * messages.length));
+        messages.forEach((message, index) => {
+          message.classList.toggle('is-visible', index <= active);
+          message.setAttribute('aria-hidden', String(index > active));
+        });
+        // Keep the latest bubble in view while earlier messages slide behind the header.
+        // offsetTop excludes the reveal transform, avoiding measurement feedback loops.
+        const bottom = messages[active].offsetTop + messages[active].offsetHeight;
+        const offset = Math.max(0, bottom + 16 - viewport.clientHeight);
+        list.style.transform = `translateY(-${offset}px)`;
+        conversation.dataset.step = String(active + 1);
+      };
+      const schedule = () => {
+        if (!disposed && !frame) frame = requestAnimationFrame(update);
+      };
+      const setMotion = () => {
+        conversation.classList.toggle('animate-messages', !motion.matches);
+        if (motion.matches) {
+          list.style.removeProperty('transform');
+          messages.forEach(message => message.removeAttribute('aria-hidden'));
+        } else {
+          schedule();
+        }
+      };
+      setMotion();
+      window.addEventListener('scroll', schedule, { passive: true });
+      window.addEventListener('resize', schedule);
+      motion.addEventListener('change', setMotion);
+      const resizeObserver = new ResizeObserver(schedule);
+      resizeObserver.observe(viewport);
+      resizeObserver.observe(list);
+      document.fonts.ready.then(schedule);
+      document.addEventListener('astro:before-swap', () => {
+        disposed = true;
+        cancelAnimationFrame(frame);
+        resizeObserver.disconnect();
+        window.removeEventListener('scroll', schedule);
+        window.removeEventListener('resize', schedule);
+        motion.removeEventListener('change', setMotion);
+      }, { once: true });
+    });
+  }
+  initConversations();
+  document.addEventListener('astro:page-load', initConversations);
+</script>
+
+<style>
+  .scroll-conversation { max-width: 660px; margin-inline: auto; padding: 0 24px 80px; }
+  .phone { overflow: hidden; border: 5px solid white; border-radius: 28px; background: #efeae2; box-shadow: 0 24px 65px -20px #264c3226; color: #111b21; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .messages { position: relative; display: flex; flex-direction: column; gap: 40px; margin: 0; padding: 32px 24px; list-style: none; background: url('/chat-pattern.svg') repeat; background-size: 280px; }
+  .message-row { display: flex; }
+  .sent { justify-content: flex-end; }
+  .received { justify-content: flex-start; }
+  .message-bubble { position: relative; max-width: 88%; min-width: 0; padding: 14px 16px 8px; border-radius: 12px; background: white; box-shadow: 0 1px 2px #13271918; }
+  .sent .message-bubble { background: #d9fdd3; border-start-end-radius: 3px; }
+  .received .message-bubble { border-start-start-radius: 3px; }
+  .message-bubble::before { content: ''; position: absolute; top: 0; border-top: 8px solid white; border-inline-start: 8px solid transparent; inset-inline-start: -6px; }
+  .sent .message-bubble::before { inset-inline-start: auto; inset-inline-end: -6px; border-inline-start: 0; border-inline-end: 8px solid transparent; border-top-color: #d9fdd3; }
+  .sender { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .day { align-self: center; padding: 5px 12px; border-radius: 7px; background: #fff9; color: #667781; font-size: 11px; box-shadow: 0 1px 1px #0001; }
+  .message-bubble p { margin: 0; font-size: 16px; line-height: 1.55; overflow-wrap: anywhere; }
+  .meta { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 6px; color: #697667; font-size: 10px; direction: ltr; }
+  .meta :global(svg) { color: #45a9d0; }
+  .upload { width: 320px; }
+  .upload-grid, .results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .thumbnail, .result-image { position: relative; overflow: hidden; border-radius: 6px; aspect-ratio: 3 / 2; background: #8b8e76; }
+  img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .remaining { position: absolute; inset: 0; display: grid; place-items: center; background: #0006; color: white; font-size: 28px; direction: ltr; }
+  .video-icon { position: absolute; inset-inline-start: 8px; bottom: 8px; color: white; filter: drop-shadow(0 1px 2px #000); }
+  .message-bubble .upload-label { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 14px; }
+  .results { margin-top: 14px; gap: 10px; }
+  .suggested-videos { margin-block: 10px; padding-inline-start: 22px; font-size: 14px; line-height: 1.5; }
+  figure { margin: 0; }
+  figcaption { padding-top: 7px; font-size: 12px; }
+  .play { position: absolute; inset: 0; margin: auto; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #ffffffe6; color: #315b40; }
+  .demo-note { margin: 8px 0 0; text-align: center; font-size: 11px; color: #66756e; }
+  .scroll-indicator { display: none; }
+  @keyframes scroll-nudge { 0%, 100% { transform: translateY(-4px); } 50% { transform: translateY(4px); } }
+  @media (prefers-reduced-motion: no-preference) {
+    .animate-messages { height: calc(100vh + var(--message-count, 8) * 80vh); height: calc(100svh + var(--message-count, 8) * 80svh); padding-block: 0; }
+    .animate-messages .conversation-stage { position: sticky; top: 0; height: 100vh; height: 100dvh; padding-block: 28px; display: grid; grid-template-columns: minmax(0, 480px) 64px; justify-content: center; align-items: center; gap: 16px; }
+    .animate-messages .phone { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+    .animate-messages .scroll-indicator { display: flex; flex-direction: column; align-items: center; gap: 16px; color: #315b40; font-size: 12px; line-height: 1.5; text-align: center; }
+    .scroll-arrow { animation: scroll-nudge 1.8s ease-in-out infinite; }
+    .animate-messages .message-viewport { flex: 1; min-height: 0; overflow: hidden; background: url('/chat-pattern.svg') repeat; background-size: 280px; }
+    .animate-messages .messages { gap: 16px; padding: 20px 16px; background: none; transition: transform 450ms ease; }
+    .animate-messages .message-row { opacity: 0; visibility: hidden; transform: translateY(20px); }
+    .animate-messages .message-row.is-visible { opacity: 1; visibility: visible; transform: none; transition: opacity 450ms ease, transform 450ms ease; }
+    .animate-messages .demo-note { position: absolute; bottom: 5px; inset-inline: 0; margin: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) and (max-width: 600px) {
+    .animate-messages .conversation-stage { grid-template-columns: minmax(0, 1fr) 32px; gap: 8px; }
+    .animate-messages .scroll-indicator { font-size: 11px; }
+    .animate-messages .messages { padding-inline: 10px; }
+    .animate-messages .message-bubble { max-width: 96%; }
+    .animate-messages .demo-note { font-size: 10px; }
+  }
+  @media (prefers-reduced-motion: no-preference) and (max-height: 650px) {
+    .animate-messages .message-bubble { padding-block: 8px 4px; }
+    .animate-messages .message-bubble p { font-size: 14px; line-height: 1.4; }
+    .animate-messages .thumbnail, .animate-messages .result-image { max-height: 60px; }
+    .animate-messages .results { margin-top: 8px; }
+  }
+  @media (max-width: 380px) {
+    .scroll-conversation { padding-inline: 16px; }
+    .messages { padding: 24px 12px; gap: 32px; }
+    .message-bubble { max-width: 94%; padding-inline: 12px; }
+    .message-bubble p { font-size: 14px; }
+  }
+</style>

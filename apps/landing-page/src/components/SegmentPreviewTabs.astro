@@ -1,0 +1,68 @@
+---
+import SegmentPhonePreview from './SegmentPhonePreview.astro';
+import { segments, segmentSlugs } from '../i18n/segments';
+import type { Locale } from '../i18n/ui';
+import { useTranslations } from '../i18n/utils';
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+---
+<segment-preview-tabs>
+  <div class="tabs" role="tablist" aria-label={t('home.choose')}>
+    {segmentSlugs.map((segment, index) => (
+      <button type="button" role="tab" id={`preview-tab-${segment}`} aria-controls={`preview-panel-${segment}`} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1}>
+        {segments[locale][segment].name}
+      </button>
+    ))}
+  </div>
+  {segmentSlugs.map((segment, index) => (
+    <div role="tabpanel" id={`preview-panel-${segment}`} aria-labelledby={`preview-tab-${segment}`} hidden={index !== 0} tabindex="0">
+      <SegmentPhonePreview {locale} {segment} />
+    </div>
+  ))}
+</segment-preview-tabs>
+
+<script>
+  class SegmentPreviewTabs extends HTMLElement {
+    connectedCallback() {
+      const tabs = Array.from(this.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+      const panels = Array.from(this.querySelectorAll<HTMLElement>('[role="tabpanel"]'));
+      const select = (index: number) => {
+        tabs.forEach((tab, i) => {
+          tab.setAttribute('aria-selected', String(i === index));
+          tab.tabIndex = i === index ? 0 : -1;
+          panels[i].hidden = i !== index;
+        });
+      };
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => select(index));
+        tab.addEventListener('keydown', (event) => {
+          const rtl = getComputedStyle(this).direction === 'rtl';
+          let next: number;
+          switch (event.key) {
+            case 'ArrowRight': next = (index + (rtl ? -1 : 1) + tabs.length) % tabs.length; break;
+            case 'ArrowLeft': next = (index + (rtl ? 1 : -1) + tabs.length) % tabs.length; break;
+            case 'Home': next = 0; break;
+            case 'End': next = tabs.length - 1; break;
+            default: return;
+          }
+          event.preventDefault();
+          select(next);
+          tabs[next].focus();
+        });
+      });
+    }
+  }
+  customElements.define('segment-preview-tabs', SegmentPreviewTabs);
+</script>
+
+<style>
+  segment-preview-tabs { display: block; width: 100%; min-width: 0; max-width: 392px; justify-self: center; }
+  .tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; margin-bottom: 20px; border-bottom: 1px solid #c6d8cb; }
+  button { flex: 1 0 auto; white-space: nowrap; font: inherit; font-size: 11px; color: #61756a; background: transparent; border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 12px 5px 9px; min-height: 44px; cursor: pointer; }
+  button:hover { color: #216c4b; background: #e3eee6; }
+  button[aria-selected="true"] { border-bottom-color: #216c4b; color: #216c4b; font-weight: 500; }
+  button:focus-visible { outline: 2px solid #247557; outline-offset: -3px; }
+  [role="tabpanel"]:focus-visible { outline: 3px solid #247557; outline-offset: 4px; }
+  [hidden] { display: none; }
+</style>

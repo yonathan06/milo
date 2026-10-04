@@ -1,0 +1,10 @@
+---
+import WhatsAppPreview from './WhatsAppPreview.astro';
+import { getLandingCopy } from './landing-copy';
+import { getSegmentUI, type Segment } from '../i18n/segments';
+import type { Locale } from '../i18n/ui';
+interface Props { locale: Locale; segment: Segment; }
+const { locale, segment } = Astro.props;
+const copy = getLandingCopy(locale, getSegmentUI(locale, segment), segment);
+---
+<WhatsAppPreview {copy} />

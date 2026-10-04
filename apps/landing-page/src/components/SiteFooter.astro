@@ -1,0 +1,32 @@
+---
+import { languages, type Locale } from '../i18n/ui';
+import { getLocaleNeutralPath, useTranslations, useTranslatedPath } from '../i18n/utils';
+interface Props { locale: Locale; }
+const { locale } = Astro.props;
+const year = new Date().getFullYear();
+const t = useTranslations(locale);
+const translatePath = useTranslatedPath(locale);
+const pagePath = getLocaleNeutralPath(Astro.url);
+---
+<footer class="site-footer">
+  <div class="footer-content">
+    <a class="brand" href={translatePath('/')} lang="en">Milo</a>
+    <p>© {year} Milo. {t('footer.rights')}</p>
+    <nav aria-label={t('footer.language')}>
+      {Object.entries(languages).map(([lang, label]) => (
+        <a href={translatePath(pagePath, lang as Locale)} lang={lang} hreflang={lang} aria-current={locale === lang ? 'page' : undefined}>{label}</a>
+      ))}
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .site-footer { border-top: 1px solid #d8e5dc; }
+  .footer-content { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 32px; max-width: 1200px; margin-inline: auto; padding: 24px 36px; }
+  a { display: inline-flex; align-items: center; min-height: 44px; color: #315b40; text-decoration: none; }
+  .brand { font-size: 24px; font-weight: 500; }
+  p { margin: 0; color: #66756e; font-size: 12px; }
+  nav { display: flex; gap: 24px; font-size: 13px; }
+  nav a:hover, nav a[aria-current='page'] { text-decoration: underline; text-underline-offset: 4px; }
+  @media (max-width: 600px) { .footer-content { flex-direction: column; gap: 8px; padding: 24px; text-align: center; } }
+</style>
