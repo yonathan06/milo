@@ -21,7 +21,7 @@ function ResultDetail() {
   const data = createQuery(() => resultOptions(parseId(params().resultId)));
   return <Show when={data.data}>{(detail) => <>
     <Link to="/results" class="mb-6 inline-block text-sm text-teal-700 hover:underline">← All search results</Link>
-    <PageHeading eyebrow="Search result" title={detail().result.title || detail().result.url} description={detail().result.description}><Badge>Result #{detail().result.id}</Badge></PageHeading>
+    <PageHeading title={detail().result.title || detail().result.url}><Badge>Result #{detail().result.id}</Badge></PageHeading>
     <div class="rounded-xl border border-slate-200 bg-white p-5"><ExternalLink url={detail().result.url} /><p class="mt-2 text-xs text-slate-400">First recorded {detail().result.created_at}</p></div>
     <div class="mt-5"><ResultEnrichment resultId={detail().result.id} results={[detail().result]} /></div>
     <AssessmentDetails result={detail().result} attempts={detail().assessments} />

@@ -215,7 +215,9 @@ Apply schema changes through reviewed Drizzle migrations, not automatic destruct
 
 Better Auth manages web authentication and account sessions. WhatsApp webhook authentication is separate: a signed provider event identifies a channel sender, not a Better Auth browser session.
 
-Associate a sender with an internal principal. If chat-first provisioning is enabled, use an explicit provisional-user policy compatible with the auth schema. Linking an existing web account requires a short-lived, single-use verification flow proving control; matching a phone-number field is insufficient.
+Associate a sender with an internal principal. A sender phone number from a signature-validated WhatsApp event on a recognized business channel is accepted as verified without a separate OTP. Provision or reuse a canonical user by normalized, unique E.164 phone number; this does not establish a browser session. Never apply this policy to a client-submitted number or unsigned payload. Persist channel-scoped WhatsApp identity associations separately.
+
+Use Better Auth's canonical `email` and `email_verified` fields, with no separate contact email. Providing a real email is optional during phone-first onboarding. Better Auth's required email uses an opaque non-routable placeholder for phone-only users, with `email_verified = false`; it is not a deliverable address. A later authenticated email-update flow replaces the placeholder with a real email and resets verification. Adding or changing an email must not automatically verify it. Linking or merging an existing web account requires a short-lived, single-use verification flow proving control; matching an unverified phone-number field is insufficient.
 
 - Enforce ownership/tenant scope in all services and tools.
 - Keep provider tokens, database credentials, and signing secrets in managed secret storage.
@@ -354,7 +356,7 @@ Before production:
 2. Validate Workers compatibility for Drizzle, Better Auth, AI SDK providers, and OTel exporters.
 3. Verify PostHog's current ingestion support and finalize the telemetry export path.
 4. Select model/provider, context budgets, timeouts, rate limits, and spend ceilings.
-5. Define provisional-user onboarding and web-account linking behavior.
+5. Implement verified WhatsApp phone provisioning at the signed ingestion boundary, optional email updates/verification, and proven-control web-account linking.
 6. Choose the ambiguous-send policy and any required WhatsApp templates.
 7. Define retention, deletion, operational access, and alert thresholds.
 8. Test duplicate/reordered webhooks and queues, simultaneous turns, forced process termination, lease expiry, provider rate limits, ambiguous sends, and telemetry failure.

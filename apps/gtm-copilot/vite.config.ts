@@ -9,6 +9,10 @@ export default defineConfig({
     port: 3000,
     host: '127.0.0.1',
     allowedHosts: ['expenses-parameter-representations-spies.trycloudflare.com'],
+    // SQLite sidecars change during reads/writes; they are data, not HMR inputs.
+    watch: {
+      ignored: ['**/data/**', '**/*.sqlite', '**/*.sqlite-*', '**/*.db', '**/*.db-*'],
+    },
   },
   plugins: [tailwindcss(), tanstackStart({ srcDirectory: 'web' }), solid({ ssr: true }), nitro({ preset: 'node-server' })],
 });

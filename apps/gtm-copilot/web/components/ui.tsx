@@ -9,8 +9,8 @@ export function Badge(props: { children: JSX.Element }) {
 export function Empty(props: { title: string; children?: JSX.Element }) {
   return <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center"><h2 class="text-lg font-semibold">{props.title}</h2><p class="mt-2 text-sm text-slate-500">{props.children}</p></div>;
 }
-export function PageHeading(props: { eyebrow: string; title: string; description?: string; children?: JSX.Element }) {
-  return <header class="mb-8"><p class="mb-3 text-xs font-semibold tracking-widest text-teal-700 uppercase">{props.eyebrow}</p><h1 class="text-3xl font-semibold tracking-tight break-words sm:text-4xl">{props.title}</h1><Show when={props.description}><p class="mt-4 max-w-3xl whitespace-pre-wrap leading-7 text-slate-500">{props.description}</p></Show><div class="mt-4 flex flex-wrap gap-2">{props.children}</div></header>;
+export function PageHeading(props: { title: string; children?: JSX.Element }) {
+  return <header class="mb-8"><h1 class="text-3xl font-semibold tracking-tight break-words sm:text-4xl">{props.title}</h1><Show when={props.children}><div class="mt-4 flex flex-wrap gap-2">{props.children}</div></Show></header>;
 }
 export function Section(props: { title: string; children: JSX.Element }) {
   return <section class="mt-8"><h2 class="mb-4 text-lg font-semibold">{props.title}</h2>{props.children}</section>;

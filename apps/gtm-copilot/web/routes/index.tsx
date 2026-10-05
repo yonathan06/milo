@@ -14,7 +14,7 @@ function Segments() {
   const [search, setSearch] = createSignal('');
   const filtered = createMemo(() => (data.data ?? []).filter((segment) => `${segment.name} ${segment.description}`.toLowerCase().includes(search().toLowerCase())));
   return <>
-    <PageHeading eyebrow="Research explorer" title="Marketing segments" description="Explore your audiences, suggested search queries, and the communities discovered along the way."><Badge>{data.data?.length ?? 0} segments</Badge><Badge>SQLite · live local data</Badge></PageHeading>
+    <PageHeading title="Marketing segments"><Badge>{data.data?.length ?? 0} segments</Badge><Badge>SQLite · live local data</Badge></PageHeading>
     <Show when={data.data?.length} fallback={<Empty title="No segments yet">Create segments with the existing CLI. They will appear here without changing the database from the app.</Empty>}>
       <BulkQueryGenerator missingCount={(data.data ?? []).filter((segment) => segment.query_count === 0).length} />
       <label class="mb-6 block"><span class="mb-2 block text-sm font-medium text-slate-600">Find a segment</span><input type="search" value={search()} onInput={(event) => setSearch(event.currentTarget.value)} placeholder="Search name or description…" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm sm:max-w-md" /></label>

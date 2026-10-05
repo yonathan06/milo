@@ -27,7 +27,7 @@ function AllResults() {
   const buttonClass = 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
 
   return <>
-    <PageHeading eyebrow="Research explorer" title="All search results" description="One row per saved URL across all segments. Filter by discovery countries and segments, or open a result for details and enrichment history."><Badge>{data.data?.length ?? 0} unique results</Badge><Badge>{(data.data ?? []).filter((result) => result.enriched).length} enriched</Badge></PageHeading>
+    <PageHeading title="All search results"><Badge>{data.data?.length ?? 0} unique results</Badge><Badge>{(data.data ?? []).filter((result) => result.enriched).length} enriched</Badge></PageHeading>
     <ResultEnrichment results={data.data ?? []} />
     <Show when={data.data?.length} fallback={<Empty title="No search results yet">Run a search from a segment’s Queries tab to collect results.</Empty>}>
       <div class="mb-6 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
