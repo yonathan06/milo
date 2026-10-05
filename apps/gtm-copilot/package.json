@@ -1,0 +1,48 @@
+{
+  "name": "gtm-copilot",
+  "version": "1.0.0",
+  "description": "Multilingual community search query planner powered by the AI SDK",
+  "private": true,
+  "exports": "./src/query-planner.ts",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "plan": "node --env-file-if-exists=.env src/cli.ts",
+    "dev": "node --env-file-if-exists=.env node_modules/vite/bin/vite.js",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env .output/server/index.mjs",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.web.json",
+    "search": "node --env-file-if-exists=.env src/search-cli.ts",
+    "enrich": "node --env-file-if-exists=.env src/enrich-cli.ts",
+    "assess": "node --env-file-if-exists=.env src/assess-cli.ts",
+    "review:outreach": "node src/review-outreach-cli.ts",
+    "db:init": "node --env-file-if-exists=.env src/init-db.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@openrouter/ai-sdk-provider": "^3.1.0",
+    "@tanstack/solid-query": "^5.104.1",
+    "@tanstack/solid-router": "^1.170.38",
+    "@tanstack/solid-router-ssr-query": "^1.167.3",
+    "@tanstack/solid-start": "^1.168.57",
+    "@tanstack/solid-table": "^9.2.5",
+    "ai": "^7.0.127",
+    "cheerio": "^1.2.0",
+    "robots-parser": "^3.0.1",
+    "solid-js": "^1.9.15",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.4",
+    "nitro": "3.0.260903-beta",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vite-plugin-solid": "^2.11.14"
+  }
+}

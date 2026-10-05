@@ -1,0 +1,3 @@
+# TanStack Start / Nitro build artifacts
+.output/
+.tanstack/

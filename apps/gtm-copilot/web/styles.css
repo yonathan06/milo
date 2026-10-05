@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@source "./**/*.{ts,tsx}";
+
+@layer base {
+  body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  button, summary { cursor: pointer; }
+  a, button, input, select, summary { outline-offset: 4px; }
+  ::selection { background: #ccfbf1; }
+}
