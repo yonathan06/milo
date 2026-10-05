@@ -100,10 +100,30 @@ a production auth route.
 ## Identity and attribution boundaries
 
 WhatsApp webhook signature checks and sender-to-internal-user resolution are not
-Better Auth sessions. The required unique email in the core auth user schema does
-not define a chat-first provisioning policy. Do not invent verified emails or link
-accounts by matching phone numbers. Decide provisional-user creation and verified
-account linking in the ingestion service.
+Better Auth sessions. After validating the raw webhook signature and resolving the
+trusted business channel, the server may call `provisionVerifiedWhatsAppUser` from
+`@video-editor-agent/db/users` with the provider's `from`/`wa_id` sender. It normalizes
+international digits to E.164 and atomically creates or reuses a user by unique
+`phone_number`, marking `phone_number_verified = true` without OTP. A phone supplied
+by a browser or an unsigned webhook is **not** proof of ownership. This helper does
+not itself check signatures, create a browser session, or issue credentials.
+
+The helper accepts a Drizzle transaction so the ingestion service can provision and
+persist the first message/attribution atomically. Concurrent and repeated messages
+reuse the same user and preserve acquisition, email and name. Canonical users are
+global by phone; the future WhatsApp identity mapping still needs channel-scoped
+sender records. Cross-account merges require a separate proven-control flow.
+
+Use Better Auth's existing `email` and `email_verified` as the single canonical
+email fields; there is no separate contact email. Providing a real email is optional
+for phone-first onboarding. Since Better Auth requires a unique non-null email,
+phone-only users start with `<internal-id>@whatsapp.invalid` and
+`email_verified = false`. The placeholder must never receive mail or count as proof
+of email ownership. A later authenticated email-update flow replaces it with the
+user's real address and resets verification; entering an address alone never
+verifies it. Phone fields are server-owned and hidden from auth responses.
+The OTP phone plugin is not enabled: WhatsApp provisioning does not invoke or bypass
+its OTP routes. Future web phone login needs its own proof-of-control mechanism.
 
 `acquisition_ref = NULL` with a populated `acquisition_initialized_at` means
 **permanently unattributed**. All acquisition fields start null, including for web
@@ -133,8 +153,9 @@ database**), set `TEST_DATABASE_URL` in `packages/db/.env`, and run from the roo
 pnpm --filter @video-editor-agent/db test:integration
 ```
 
-It exercises Better Auth user/session persistence and transaction rollback and
-cleans up its test user. It is skipped without configuration. Local PostgreSQL tests
+It exercises Better Auth user/session persistence, transaction rollback, verified
+phone-only provisioning, concurrent deduplication, optional email persistence and
+acquisition preservation. It cleans up its test users. It is skipped without configuration. Local PostgreSQL tests
 do not qualify the Neon WebSocket transport or deployed Workers behavior. Deployed Workers
 transport, concurrent locks, production auth flows and backup/restore still require
 qualification; no resources are provisioned by this package.

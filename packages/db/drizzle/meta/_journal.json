@@ -8,6 +8,20 @@
       "when": 1791203714413,
       "tag": "0000_tranquil_marten_broadcloak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791206219207,
+      "tag": "0001_hot_silver_samurai",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791206634201,
+      "tag": "0002_illegal_krista_starr",
+      "breakpoints": true
     }
   ]
 }

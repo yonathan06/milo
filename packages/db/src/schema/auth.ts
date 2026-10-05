@@ -7,8 +7,11 @@ const updatedAt = () => timestamp("updated_at", { withTimezone: true }).defaultN
 export const user = pgTable("users", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  // Canonical Better Auth email; phone-only users start with an unverified placeholder.
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
+  phoneNumber: text("phone_number").unique(),
+  phoneNumberVerified: boolean("phone_number_verified").default(false).notNull(),
   image: text("image"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -18,6 +21,8 @@ export const user = pgTable("users", {
   // A messages FK will be added when the ingestion schema is introduced.
   acquisitionMessageId: text("acquisition_message_id"),
 }, (table) => [
+  check("users_verified_phone_present", sql`${table.phoneNumberVerified} = false OR ${table.phoneNumber} IS NOT NULL`),
+  check("users_phone_e164", sql`${table.phoneNumber} IS NULL OR ${table.phoneNumber} ~ '^[+][1-9][0-9]{1,14}$'`),
   check("users_acquisition_state", sql`
     (${table.acquisitionInitializedAt} IS NULL AND ${table.acquisitionMessageId} IS NULL AND ${table.acquisitionRef} IS NULL)
     OR (${table.acquisitionInitializedAt} IS NOT NULL AND ${table.acquisitionMessageId} IS NOT NULL)

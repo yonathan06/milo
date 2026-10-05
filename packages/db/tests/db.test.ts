@@ -4,6 +4,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { createDatabase, validateDatabaseUrl, withDatabase } from "../src/connection.ts";
 import { createAuth } from "../src/auth.ts";
 import * as schema from "../src/schema/index.ts";
+import { normalizeWhatsAppPhoneNumber } from "../src/users.ts";
 
 const url = "postgresql://user:password@ep-example-pooler.eu-central-1.aws.neon.tech/app?sslmode=require";
 const config = { secret: "test-only-secret-not-for-production-123456", baseURL: "http://localhost:8787" };
@@ -49,4 +50,15 @@ test("schema provides core auth keys, cascades, and acquisition consistency", ()
   assert.ok(getTableConfig(schema.user).checks.some((check) => check.name === "users_acquisition_state"));
   assert.equal(schema.user.email.notNull, true);
   assert.equal(schema.user.acquisitionRef.notNull, false);
+  assert.equal("contactEmail" in schema.user, false);
+  assert.equal("contactEmailVerified" in schema.user, false);
+  assert.equal(schema.user.phoneNumber.isUnique, true);
+});
+
+test("WhatsApp numbers normalize deterministically without guessing country codes", () => {
+  assert.equal(normalizeWhatsAppPhoneNumber("14155552671"), "+14155552671");
+  assert.equal(normalizeWhatsAppPhoneNumber("+14155552671"), "+14155552671");
+  for (const value of ["", "0014155552671", "+1 415 555 2671", "abc", "1234567890123456"]) {
+    assert.throws(() => normalizeWhatsAppPhoneNumber(value), /international phone number/);
+  }
 });
