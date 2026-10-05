@@ -23,7 +23,7 @@ async (page) => {
         ctaTouchSize: cta.height >= 44,
         imagesLoaded: [...document.images].filter(image => image.loading !== 'lazy').every(image => image.complete && image.naturalWidth > 0),
         headingCount: document.querySelectorAll('h1').length,
-        extraCopy: [...document.querySelectorAll('body *')].filter(el => !el.closest('script, style, h1, .cta, .chat, .country-selector, .editor-comparison, .scroll-conversation, .closing-cta, .site-footer')).flatMap(el => [...el.childNodes]).some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()),
+        extraCopy: [...document.querySelectorAll('body *')].filter(el => !el.closest('script, style, h1, .cta, .chat, .editor-comparison, .scroll-conversation, .closing-cta, .site-footer')).flatMap(el => [...el.childNodes]).some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim()),
       };
     });
     assert(!result.overflow, `Horizontal overflow at ${width}px`);
@@ -39,9 +39,7 @@ async (page) => {
   await page.goto('http://localhost:4321/weddings/');
   await page.evaluate(() => document.fonts.ready);
   await page.keyboard.press('Tab');
-  assert(await page.locator('.country-selector summary').evaluate(el => el === document.activeElement), 'Country selector must be first tab stop');
-  await page.keyboard.press('Tab');
-  assert(await page.locator('.cta').evaluate(el => el === document.activeElement), 'CTA must follow the country selector');
+  assert(await page.locator('.cta').evaluate(el => el === document.activeElement), 'CTA must be first tab stop');
   assert(await page.locator('.cta').evaluate(el => getComputedStyle(el).outlineStyle === 'solid'), 'Missing keyboard focus indicator');
   assert(await page.locator('video, audio, .chat button, .chat [tabindex]').count() === 0, 'Chat mock must be non-interactive');
   await page.locator('.recap-preview').click();

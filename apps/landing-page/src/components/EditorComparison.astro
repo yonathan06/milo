@@ -1,9 +1,8 @@
 ---
-import type { Locale, Translations } from '../i18n/ui';
-import { useTranslations } from '../i18n/utils';
-interface Props { locale: Locale; content: Translations; }
-const { locale, content } = Astro.props;
-const t = useTranslations(locale, content);
+import type { PageContent } from '../content/ui';
+interface Props { content: PageContent; }
+const { content } = Astro.props;
+const t = <K extends keyof PageContent>(key: K): PageContent[K] => content[key];
 const copy = {
   before: t('comparison.before'),
   after: t('comparison.after'),
@@ -39,7 +38,6 @@ const copy = {
     box-decoration-break: clone;
   }
   bdi { white-space: nowrap; color: #173d32; }
-  :global([dir="rtl"]) h2 { letter-spacing: 0; line-height: 1.35; }
   @media (max-width: 900px) {
     .editor-comparison { padding: 0 24px 48px; }
     .comparison-card { padding: 40px 24px; }

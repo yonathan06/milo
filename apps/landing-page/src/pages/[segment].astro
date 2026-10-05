@@ -1,6 +1,6 @@
 ---
 import LandingPage from '../components/LandingPage.astro';
-import { segmentSlugs, type Segment } from '../i18n/segments';
+import { segmentSlugs, type Segment } from '../content/segments';
 export function getStaticPaths() {
   return segmentSlugs.map(segment => ({ params: { segment }, props: { segment } }));
 }

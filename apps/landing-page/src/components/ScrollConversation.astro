@@ -2,12 +2,11 @@
 import Icon from './Icon.astro';
 import WhatsAppHeader from './WhatsAppHeader.astro';
 import WhatsAppComposer from './WhatsAppComposer.astro';
-import type { Locale, Translations } from '../i18n/ui';
-import type { SegmentMedia } from '../i18n/segments';
-import { useTranslations } from '../i18n/utils';
-interface Props { locale: Locale; content: Translations; media: SegmentMedia; }
-const { locale, content, media } = Astro.props;
-const t = useTranslations(locale, content);
+import type { PageContent } from '../content/ui';
+import type { SegmentMedia } from '../content/segments';
+interface Props { content: PageContent; media: SegmentMedia; }
+const { content, media } = Astro.props;
+const t = <K extends keyof PageContent>(key: K): PageContent[K] => content[key];
 const copy = {
   label: t('conversation.label'),
   scroll: t('conversation.scroll'),

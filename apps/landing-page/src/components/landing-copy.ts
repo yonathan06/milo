@@ -1,10 +1,9 @@
-import { useTranslations } from '../i18n/utils';
-import type { Locale, Translations } from '../i18n/ui';
-import { segmentMedia, type Segment } from '../i18n/segments';
+import { ui, type PageContent } from '../content/ui';
+import { segmentMedia, type Segment } from '../content/segments';
 
-// Structured copy for the hero and WhatsApp preview; all text lives in i18n/ui.ts.
-export function getLandingCopy(locale: Locale, content?: Translations, segment: Segment = 'weddings') {
-  const t = useTranslations(locale, content);
+// Structured copy for the hero and WhatsApp preview.
+export function getLandingCopy(content: PageContent = ui, segment: Segment = 'weddings') {
+  const t = <K extends keyof PageContent>(key: K): PageContent[K] => content[key];
   return {
     media: segmentMedia[segment],
     description: t('landing.description'),

@@ -21,7 +21,6 @@ const { status, verified } = Astro.props;
   .verified { color: #1da1f2; }
   .status { color: #667781; font-size: 11px; }
   .calls { display: flex; align-items: center; gap: 18px; }
-  :global([dir='rtl']) .back { transform: scaleX(-1); }
   @media (max-width: 380px) { .wa-header { gap: 5px; padding-inline: 6px; } .calls { gap: 10px; } .avatar { width: 32px; height: 32px; } }
   @media (max-height: 650px) { .wa-header { min-height: 54px; padding-block: 6px; } }
 </style>

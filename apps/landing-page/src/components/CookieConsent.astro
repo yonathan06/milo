@@ -1,0 +1,16 @@
+<aside data-cookie-consent hidden aria-label="Cookie preferences">
+  <p>Allow cookies and analytics to help us improve our website?</p>
+  <div>
+    <button type="button" data-consent="accepted">Allow</button>
+    <button type="button" data-consent="rejected">Decline</button>
+  </div>
+</aside>
+
+<style>
+  aside { position: fixed; bottom: 20px; inset-inline: 20px; z-index: 100; max-width: 540px; margin-inline: auto; padding: 20px; background: #fff; color: #183c2e; border: 1px solid #216c4b; border-radius: 16px; box-shadow: 0 4px 24px #0002; }
+  p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; }
+  div { display: flex; gap: 12px; }
+  button { cursor: pointer; padding: 10px 16px; border: 1px solid #216c4b; border-radius: 24px; background: white; color: #183c2e; font: inherit; }
+  button[data-consent="accepted"] { background: #216c4b; color: white; }
+  [hidden] { display: none !important; }
+</style>

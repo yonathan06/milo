@@ -81,14 +81,12 @@ const clips = [
   .recap-caption p { font-size: 12px; }
 
 
-  :global([dir="rtl"]) .chat { transform: rotate(-1deg); }
   @media (min-width: 901px) and (max-height: 820px) {
     .conversation { padding-block: 12px 14px; gap: 6px; }
     .clip { height: 65px; }
   }
   @media (max-width: 900px) {
     .chat { width: 100%; max-width: 392px; justify-self: center; transform: none; border-width: 4px; border-radius: 24px; }
-    :global([dir="rtl"]) .chat { transform: none; }
   }
   @media (max-width: 380px) {
     .conversation { padding-inline: 13px; }

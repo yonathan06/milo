@@ -1,23 +1,19 @@
 ---
 import SegmentPhonePreview from './SegmentPhonePreview.astro';
-import { segments, segmentSlugs } from '../i18n/segments';
-import type { Locale } from '../i18n/ui';
-import { useTranslations } from '../i18n/utils';
-interface Props { locale: Locale; }
-const { locale } = Astro.props;
-const t = useTranslations(locale);
+import { segments, segmentSlugs } from '../content/segments';
+import { ui } from '../content/ui';
 ---
 <segment-preview-tabs>
-  <div class="tabs" role="tablist" aria-label={t('home.choose')}>
+  <div class="tabs" role="tablist" aria-label={ui['home.choose']}>
     {segmentSlugs.map((segment, index) => (
       <button type="button" role="tab" id={`preview-tab-${segment}`} aria-controls={`preview-panel-${segment}`} aria-selected={index === 0 ? 'true' : 'false'} tabindex={index === 0 ? 0 : -1}>
-        {segments[locale][segment].name}
+        {segments[segment].name}
       </button>
     ))}
   </div>
   {segmentSlugs.map((segment, index) => (
     <div role="tabpanel" id={`preview-panel-${segment}`} aria-labelledby={`preview-tab-${segment}`} hidden={index !== 0} tabindex="0">
-      <SegmentPhonePreview {locale} {segment} />
+      <SegmentPhonePreview {segment} />
     </div>
   ))}
 </segment-preview-tabs>
@@ -37,11 +33,10 @@ const t = useTranslations(locale);
       tabs.forEach((tab, index) => {
         tab.addEventListener('click', () => select(index));
         tab.addEventListener('keydown', (event) => {
-          const rtl = getComputedStyle(this).direction === 'rtl';
           let next: number;
           switch (event.key) {
-            case 'ArrowRight': next = (index + (rtl ? -1 : 1) + tabs.length) % tabs.length; break;
-            case 'ArrowLeft': next = (index + (rtl ? 1 : -1) + tabs.length) % tabs.length; break;
+            case 'ArrowRight': next = (index + 1) % tabs.length; break;
+            case 'ArrowLeft': next = (index - 1 + tabs.length) % tabs.length; break;
             case 'Home': next = 0; break;
             case 'End': next = tabs.length - 1; break;
             default: return;

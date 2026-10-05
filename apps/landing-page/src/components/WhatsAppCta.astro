@@ -1,0 +1,9 @@
+---
+import Icon from './Icon.astro';
+interface Props { href: string; label: string; placement: 'hero' | 'closing'; class?: string; }
+const { href, label, placement, ...attributes } = Astro.props;
+---
+<a {...attributes} href={href} data-whatsapp-cta={placement} data-whatsapp-base={href} target="_blank" rel="noopener noreferrer">
+  <Icon name="whatsapp" size={23} />
+  <span>{label}</span>
+</a>

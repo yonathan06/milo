@@ -1,5 +1,5 @@
 ---
-import Icon from './Icon.astro';
+import WhatsAppCta from './WhatsAppCta.astro';
 import WhatsAppPreview from './WhatsAppPreview.astro';
 import type { LandingCopy } from './landing-copy';
 interface Props { copy: LandingCopy; chatUrl: string; }
@@ -11,10 +11,7 @@ const { copy, chatUrl } = Astro.props;
     <svg viewBox="0 0 52 52" fill="none"><path d="M37 9H15a8 8 0 0 0-8 8v16a8 8 0 0 0 8 8h4l-2 7 12-7h8a8 8 0 0 0 8-8V17a8 8 0 0 0-8-8Z" fill="currentColor"/><path d="m22 18 12 7-12 7V18Z" fill="#f4f7f5"/></svg>
   </div>
   <h1>{copy.headline.map((line, index) => <>{index > 0 && <br />}{line}</>)}</h1>
-  <a class="cta" href={chatUrl} target="_blank" rel="noopener noreferrer">
-    <Icon name="whatsapp" size={23} />
-    <span>{copy.cta}</span>
-  </a>
+  <WhatsAppCta class="cta" href={chatUrl} label={copy.cta} placement="hero" />
   <slot />
 </div>
 
@@ -26,7 +23,6 @@ const { copy, chatUrl } = Astro.props;
   .intro { padding-bottom: 10px; }
   .brand-mark { width: 48px; height: 48px; margin-bottom: 32px; color: #236c4e; }
   h1 { font-size: clamp(60px, 6.35vw, 86px); line-height: 1.055; font-weight: 500; letter-spacing: -4.8px; margin: 0 0 38px; }
-  :global([dir="rtl"]) h1 { letter-spacing: 0; line-height: 1.2; }
   .cta { display: inline-flex; gap: 12px; align-items: center; justify-content: center; background: #216c4b; color: white; border-radius: 100px; min-height: 58px; padding: 16px 25px; font-size: 15px; font-weight: 500; text-decoration: none; transition: background 160ms ease, transform 160ms ease; }
   .cta:hover { background: #18583c; transform: translateY(-2px); }
   .cta:active { transform: translateY(0); }

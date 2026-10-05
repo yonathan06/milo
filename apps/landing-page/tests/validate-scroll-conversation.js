@@ -1,7 +1,7 @@
 async (page) => {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const layouts = [[1440, 900], [375, 812], [320, 568], [812, 375]];
-  for (const path of ['/weddings/', '/he/weddings/', '/de/weddings/']) {
+  for (const path of ['/weddings/']) {
     for (const [width, height] of layouts) {
       await page.setViewportSize({ width, height });
       await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -14,8 +14,8 @@ async (page) => {
       const messageCount = await chat.locator('[data-message]').count();
       assert(messageCount === 8, 'Expected eight messages');
       const texts = await chat.locator('[data-message]').allTextContents();
-      assert(texts[3].includes(path === '/weddings/' ? 'Payment verified and accepted' : path.startsWith('/he/') ? 'התשלום אומת והתקבל' : 'Zahlung geprüft und bestätigt'), 'Payment must precede the proposal');
-      assert(texts[5].includes(path === '/weddings/' ? 'Please create both' : path.startsWith('/he/') ? 'אפשר להכין את שניהם' : 'Bitte erstelle beide'), 'Approval must precede editing');
+      assert(texts[3].includes('Payment verified and accepted'), 'Payment must precede the proposal');
+      assert(texts[5].includes('Please create both'), 'Approval must precede editing');
       const suggested = await chat.locator('.suggested-videos li').allTextContents();
       const delivered = await chat.locator('.results figcaption').allTextContents();
       assert(JSON.stringify(suggested) === JSON.stringify(delivered), 'Delivered videos must match the approved proposal');
@@ -63,5 +63,5 @@ async (page) => {
       });
     }
   }
-  return { status: 'passed', locales: ['en', 'he', 'de'], layouts, stickyPhone: 'passed', scrollSteps: 'passed', reducedMotion: 'passed' };
+  return { status: 'passed', language: 'en', layouts, stickyPhone: 'passed', scrollSteps: 'passed', reducedMotion: 'passed' };
 }

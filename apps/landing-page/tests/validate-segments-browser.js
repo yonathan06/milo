@@ -5,7 +5,8 @@ async (page) => {
   page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
   const slugs = ['weddings', 'company-events', 'family-events', 'friends-parties'];
   let checked = 0;
-  for (const [locale, prefix, direction] of [['en', '', 'ltr'], ['he', '/he', 'rtl'], ['de', '/de', 'ltr']]) {
+  const locale = 'en', prefix = '', direction = 'ltr';
+  {
     for (const slug of [null, ...slugs]) {
       const neutral = slug ? `/${slug}/` : '/';
       const path = `${prefix}${neutral}`;
@@ -32,13 +33,14 @@ async (page) => {
         assert(layout.background === 'rgb(244, 247, 245)' && layout.ctaBackground === 'rgb(33, 108, 75)', 'Existing colors changed');
         assert(layout.ctaFits && layout.images, `${path}: clipped CTA or unloaded images`);
         assert(await page.locator('h1').count() === 1, `${path}: h1`);
-        for (const [lang, targetPrefix] of [['en', ''], ['he', '/he'], ['de', '/de']]) {
-          assert(await page.locator(`.site-footer a[hreflang="${lang}"]`).getAttribute('href') === `${targetPrefix}${neutral}`, `${path}: language links`);
-        }
+        assert(await page.locator('[hreflang], .country-selector').count() === 0, `${path}: no language controls`);
         if (!slug) {
-          assert(await page.locator('.chat, .editor-comparison, .scroll-conversation, .closing-cta').count() === 0, `${path}: homepage must stay minimal`);
-          assert(await page.locator('.segment-links a').count() === 4, `${path}: segment links`);
-          for (const segment of slugs) assert(await page.locator(`.segment-links a[href="${prefix}/${segment}/"]`).count() === 1, 'Homepage segment must keep language');
+          assert(await page.locator('.editor-comparison, .scroll-conversation, .closing-cta').count() === 0, `${path}: homepage must stay minimal`);
+          assert(await page.locator('[role="tab"]').count() === 4, `${path}: preview tabs`);
+          for (const segment of slugs) {
+            await page.locator(`#preview-tab-${segment}`).click();
+            assert(await page.locator(`#preview-panel-${segment}`).isVisible(), `${path}: preview switching`);
+          }
         } else {
           assert(await page.locator('[data-message]').count() === 8, `${path}: eight messages`);
           const approved = await page.locator('.suggested-videos li').allTextContents();
@@ -55,7 +57,7 @@ async (page) => {
         if (slug) {
           await page.waitForFunction(() => !document.querySelector('[data-scroll-conversation]').classList.contains('animate-messages'));
           const clipped = await page.locator('.results figcaption, .closing-cta h2').evaluateAll(els => els.some(el => el.scrollWidth > el.clientWidth + 1));
-          assert(!clipped, `${path}: localized closing/deliverable text clipped`);
+          assert(!clipped, `${path}: closing/deliverable text clipped`);
           await page.locator('.results').scrollIntoViewIfNeeded();
           await page.waitForFunction(() => [...document.querySelectorAll('img')].every(image => image.complete && image.naturalWidth > 0));
         }
@@ -63,12 +65,10 @@ async (page) => {
         checked++;
       }
     }
-    await page.goto(`http://localhost:4321${prefix}/`);
-    await page.locator(`.segment-links a[href="${prefix}/company-events/"]`).click();
-    assert(await page.evaluate(() => location.pathname) === `${prefix}/company-events/`, 'Homepage navigation failed');
+    await page.goto('http://localhost:4321/company-events/');
     await page.locator('.site-footer .brand').click();
-    assert(await page.evaluate(() => location.pathname) === `${prefix}/`, 'Brand link must return to localized homepage');
+    assert(await page.evaluate(() => location.pathname) === `${prefix}/`, 'Brand link must return to homepage');
   }
   assert(errors.length === 0, errors.join('; '));
-  return { status: 'passed', pages: 15, layoutsChecked: checked, languages: ['en', 'he', 'de'], design: 'unchanged', errors };
+  return { status: 'passed', pages: 5, layoutsChecked: checked, language: 'en', design: 'unchanged', errors };
 }

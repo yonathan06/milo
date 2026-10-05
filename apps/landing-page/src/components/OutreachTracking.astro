@@ -1,0 +1,12 @@
+---
+import CookieConsent from './CookieConsent.astro';
+---
+<CookieConsent />
+<script>
+  import { initializeOutreach } from '../lib/outreach';
+  initializeOutreach(
+    document,
+    import.meta.env.PUBLIC_POSTHOG_KEY ?? '',
+    import.meta.env.PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
+  );
+</script>

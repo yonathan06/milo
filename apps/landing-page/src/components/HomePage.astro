@@ -4,16 +4,14 @@ import HeroSection from './HeroSection.astro';
 import SegmentPreviewTabs from './SegmentPreviewTabs.astro';
 import { getLandingCopy } from './landing-copy';
 import { getChatUrl } from './whatsapp';
-import { getLangFromUrl, useTranslations } from '../i18n/utils';
-const locale = getLangFromUrl(Astro.url);
-const t = useTranslations(locale);
-const copy = getLandingCopy(locale);
-const chatUrl = getChatUrl(t('whatsapp.prefill'), import.meta.env.PUBLIC_WHATSAPP_NUMBER);
+import { ui } from '../content/ui';
+const copy = getLandingCopy();
+const chatUrl = getChatUrl(ui['whatsapp.prefill'], import.meta.env.PUBLIC_WHATSAPP_NUMBER);
 ---
 <PageLayout title={copy.title} description={copy.description}>
   <div class="home-page">
     <HeroSection {copy} {chatUrl}>
-      <SegmentPreviewTabs slot="preview" {locale} />
+      <SegmentPreviewTabs slot="preview" />
     </HeroSection>
   </div>
 </PageLayout>
