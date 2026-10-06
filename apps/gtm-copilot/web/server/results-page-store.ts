@@ -2,7 +2,7 @@ import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../src/assessment-state.ts';
 import type { AssessmentContext } from '../../src/result-assessment.ts';
 import type { AllResult, AllResultDiscovery, Result } from './store.ts';
-import type { ResultsPageRequest } from '../results-page.ts';
+import type { ResultsFilterRequest, ResultsPageRequest } from '../results-page.ts';
 import { readLinkRankingDisplay } from './link-ranking-display.ts';
 import { matchesResultState } from '../result-filters.ts';
 
@@ -49,7 +49,7 @@ function summaries(db: DatabaseSync) {
   }));
 }
 
-export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
+function resultScope(db: DatabaseSync, request: ResultsFilterRequest) {
   const states = summaries(db);
   const rankings = readLinkRankingDisplay(db);
   const params: SQLInputValue[] = [];
@@ -80,8 +80,28 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
     where.push('matches_result_state(r.id) = 1');
   }
   const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  return { states, rankings, params, filter, discoveryFrom };
+}
+
+/** Snapshot the entire filtered scope without projecting discoveries or applying pagination. */
+export function readFilteredEnrichmentResults(db: DatabaseSync, request: ResultsFilterRequest) {
+  const { states, params, filter } = resultScope(db, request);
+  return db.prepare(`SELECT r.id FROM search_results r ${filter} ORDER BY r.id`).all(...params).map((row) => {
+    const id = Number(row.id);
+    return { id, assessment_status: states.get(id)?.assessment_status ?? 'not_enriched', assessment_ready: states.get(id)?.assessment_ready ?? false };
+  });
+}
+
+export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
+  const { states, rankings, params, filter, discoveryFrom } = resultScope(db, request);
   const totalCount = Number(db.prepare('SELECT count(*) AS n FROM search_results').get()!.n);
-  const matchedCount = where.length ? Number(db.prepare(`SELECT count(*) AS n FROM search_results r ${filter}`).get(...params)!.n) : totalCount;
+  db.function('result_pending_state', { deterministic: true }, (id) => {
+    const state = states.get(Number(id));
+    return state?.assessment_status === 'complete' ? 0 : state?.assessment_ready ? 2 : 1;
+  });
+  const counts = db.prepare(`SELECT count(*) AS matched, coalesce(sum(result_pending_state(r.id) > 0), 0) AS pending,
+    coalesce(sum(result_pending_state(r.id) = 2), 0) AS assessments FROM search_results r ${filter}`).get(...params)!;
+  const matchedCount = Number(counts.matched);
   const pageCount = Math.max(1, Math.ceil(matchedCount / request.pageSize));
   const page = Math.min(request.page, pageCount);
   const direction = request.descending ? 'DESC' : 'ASC';
@@ -119,6 +139,7 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
   const countries = db.prepare(`SELECT DISTINCT c.country_code ${discoveryFrom} ORDER BY c.country_code`).all().map((row) => String(row.country_code));
   const segments = db.prepare(`SELECT DISTINCT s.id, s.name ${discoveryFrom} ORDER BY s.name COLLATE NOCASE, s.id`).all().map((row) => [Number(row.id), String(row.name)] as const).sort((a, b) => a[1].localeCompare(b[1]));
   return { results: [...byId.values()], page, pageCount, matchedCount, totalCount,
+    matchedPendingCount: Number(counts.pending), matchedPendingAssessmentCount: Number(counts.assessments),
     enrichedCount: [...states.values()].filter((state) => state.enriched).length,
     pendingCount: totalCount - [...states.values()].filter((state) => state.assessment_status === 'complete').length,
     pendingAssessmentCount: [...states.values()].filter((state) => state.assessment_ready && state.assessment_status !== 'complete').length,

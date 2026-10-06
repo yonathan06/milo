@@ -5,9 +5,9 @@ import { InvalidWebhook, normalizeWebhook, type NormalizedEvent } from "../whats
 import { verifySignature } from "../whatsapp/signature.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
-class BodyTooLarge extends Error {}
-async function readBoundedBody(request: Request): Promise<Uint8Array> {
-  if (Number(request.headers.get("content-length")) > MAX_BODY_BYTES) throw new BodyTooLarge("Body too large");
+export class BodyTooLarge extends Error {}
+export async function readBoundedBody(request: Request, limit = MAX_BODY_BYTES): Promise<Uint8Array> {
+  if (Number(request.headers.get("content-length")) > limit) throw new BodyTooLarge("Body too large");
   if (!request.body) throw new InvalidWebhook("Missing body");
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -17,7 +17,7 @@ async function readBoundedBody(request: Request): Promise<Uint8Array> {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_BODY_BYTES) { await reader.cancel(); throw new BodyTooLarge("Body too large"); }
+      if (size > limit) { await reader.cancel(); throw new BodyTooLarge("Body too large"); }
       chunks.push(value);
     }
   } finally { reader.releaseLock(); }

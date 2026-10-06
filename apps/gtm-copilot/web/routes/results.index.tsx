@@ -1,4 +1,4 @@
-import { createFileRoute, stripSearchParams, type SearchSchemaInput } from '@tanstack/solid-router';
+import { createFileRoute, stripSearchParams, useRouterState, type SearchSchemaInput } from '@tanstack/solid-router';
 import { createQuery } from '@tanstack/solid-query';
 import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { resultsOptions } from '../data';
@@ -20,6 +20,7 @@ export const Route = createFileRoute('/results/')({
 function AllResults() {
   const request = Route.useSearch();
   const navigate = Route.useNavigate();
+  const navigating = useRouterState({ select: (state) => state.isLoading });
   const update = (patch: Partial<ResultsPageRequest>) => void navigate({
     search: (previous) => ({ ...previous, page: 1, ...patch }),
     resetScroll: false,
@@ -73,7 +74,7 @@ function AllResults() {
   return <>
     <PageHeading title="All search results"><Badge>{data.data?.totalCount ?? 0} unique results</Badge><Badge>{data.data?.enrichedCount ?? 0} enriched</Badge></PageHeading>
     <Show when={data.data}><ResultLinkRanking /></Show>
-    <Show when={data.data}>{(response) => <ResultEnrichment results={[]} counts={{ pending: response().pendingCount, pendingAssessments: response().pendingAssessmentCount }} />}</Show>
+    <Show when={data.data}>{(response) => <ResultEnrichment results={[]} filters={request()} scopeUpdating={navigating() || data.isFetching || searchInput() !== request().search || jevMin() !== request().jevMin || jevMax() !== request().jevMax} counts={{ pending: response().matchedPendingCount, pendingAssessments: response().matchedPendingAssessmentCount }} />}</Show>
     <Show when={data.isPending}><p role="status">Loading results…</p></Show>
     <Show when={data.isError}><p role="alert">Could not load results. <button type="button" class="underline" onClick={() => void data.refetch()}>Retry</button></p></Show>
     <Show when={data.data}><Show when={data.data?.totalCount} fallback={<Empty title="No search results yet">Run a search from a segment’s Queries tab to collect results.</Empty>}>

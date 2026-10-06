@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --config wrangler.local.jsonc --test-scheduled --persist-to .wrangler/local-state",
+    "dev:staging": "wrangler dev --config wrangler.jsonc",
+    "dev:setup": "node scripts/setup-local.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/unit.test.ts tests/consumer.test.ts",
     "test:integration": "node --env-file-if-exists=../../packages/db/.env --test tests/ingestion.integration.test.ts",

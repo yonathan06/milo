@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { MarketingDatabase } from './database.ts';
+import { enrichmentModels } from './enrichment-models.ts';
 import { enrichAndAssess } from './enrichment-pipeline.ts';
 import { LinkRankingStore, rankingSettings, rankingModel } from './link-ranking.ts';
 import { runLinkRankingQueue } from './link-ranking-queue.ts';
@@ -43,9 +44,10 @@ export async function runLinkRankingCli(args: string[]) {
         results: selected.map(({ id, url, score, confidence }) => ({ id, url, score, confidence })) }, null, 2));
       if (!values.execute) return;
       const provider = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-      const extraction = provider(process.env.GTM_ENRICHMENT_MODEL ?? 'deepseek/deepseek-v4.1-flash');
-      const verification = process.env.GTM_VERIFICATION_MODEL ? provider(process.env.GTM_VERIFICATION_MODEL) : extraction;
-      const assessment = process.env.GTM_ASSESSMENT_MODEL ? provider(process.env.GTM_ASSESSMENT_MODEL) : verification;
+      const models = enrichmentModels();
+      const extraction = provider(models.extraction);
+      const verification = provider(models.verification);
+      const assessment = provider(models.assessment);
       for (const link of selected) {
         // Recheck the source immediately before spending on it.
         const fresh = db.getSearchResult(link.id);

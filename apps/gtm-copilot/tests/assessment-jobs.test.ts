@@ -64,6 +64,7 @@ test('shared queue validates scope and prevents duplicate overlapping assessment
     const service = createEnrichmentService({ path: f.path, apiKey: 'test-key', processWork: async (id, db, options) => {
       count++; assert.equal(id, 1); assert.equal(db.listEnrichments(id).length, 1);
       assert.equal(options?.assessmentOnly, true); options?.onPhase?.('assessment');
+      options?.onDiagnostic?.({ step: 'assessment.model', status: 'waiting', elapsedMs: 15000, fields: { model: 'test' } });
       await new Promise<void>((resolve) => { release = resolve; });
       return { status: 'complete', enrichment: db.listEnrichments(id)[0], assessment: null };
     } });
@@ -72,6 +73,10 @@ test('shared queue validates scope and prevents duplicate overlapping assessment
     const started = service.start({ resultId: 1, mode: 'assessment' });
     assert.equal(started.job?.results.length, 1);
     assert.equal(service.getStatus()?.results[0].phase, 'assessment');
+    assert.equal(service.getStatus()?.results[0].step, 'assessment.model');
+    assert.equal(service.getStatus()?.results[0].stepStatus, 'waiting');
+    assert.equal(service.getStatus()?.results[0].stepElapsedMs, 15000);
+    assert.ok(service.getStatus()?.results[0].lastActivityAt);
     assert.match(service.start({ resultId: 2 }).error!, /already running/);
     assert.equal(count, 1);
     release();

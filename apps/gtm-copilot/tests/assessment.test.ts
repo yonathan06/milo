@@ -32,7 +32,10 @@ test('assessment schema supports providers; score bounds, deterministic aggregat
   assert.equal(finish().confidence, 'medium');
   const sized = finalizeAssessment(output, { ...data, memberCount: { value: 'members: 1,000', evidence: { sourceUrl: sources[0].url, quote: 'Members: 1000.' } } }, sources, context, verification, now);
   assert.equal(sized.components.scale.score, 75);
-  const active = finalizeAssessment(output, { ...data, latestPosts: [{ title: 'Event video editors', url: sources[0].url, publishedAt: new Date(now).toISOString(), summary: 'Event video editors', evidence }] }, sources, context, verification, now);
+  const publishedAt = new Date(now).toISOString();
+  const publishedAtEvidence = { ...evidence, quote: `publishedAt: ${publishedAt}` };
+  const datedSources = sources.map((source) => ({ ...source, text: `${source.text} ${publishedAtEvidence.quote}` }));
+  const active = finalizeAssessment(output, { ...data, latestPosts: [{ title: 'Event video editors', url: sources[0].url, publishedAt, publishedAtEvidence, summary: 'Event video editors', evidence }] }, datedSources, context, verification, now);
   assert.equal(active.components.activity.score, 100);
   assert.equal(active.confidence, 'high');
   const zero = structuredClone(output); zero.components.audience.score = 0; zero.components.eventVideo.score = 0;
@@ -115,6 +118,8 @@ test('persistence, retry, migration, currentness, stale/failure projection, and 
       assert.equal(page.results[0].assessment_status, 'complete');
       assert.equal(page.pendingCount, 0);
       assert.equal(page.pendingAssessmentCount, 0);
+      assert.equal(page.matchedPendingCount, 0);
+      assert.equal(page.matchedPendingAssessmentCount, 0);
     } finally { read.close(); }
     assert.equal(assessmentSummary(enrichment, saved, context, now).assessment_status, 'stale');
     assert.equal(assessmentSummary({ ...enrichment, sources: [] }, saved, [], now).posting_permission, 'unknown');
@@ -130,6 +135,8 @@ test('persistence, retry, migration, currentness, stale/failure projection, and 
       assert.equal(page.results[0].match_score, null);
       assert.equal(page.pendingCount, 1);
       assert.equal(page.pendingAssessmentCount, 1);
+      assert.equal(page.matchedPendingCount, 1);
+      assert.equal(page.matchedPendingAssessmentCount, 1);
     } finally { failedRead.close(); }
     db.saveEnrichment({ resultId: 1, platform: 'web', status: 'failed', data: null, sources: [], limitations: [], error: 'refresh failed' });
     await assert.rejects(assessSavedResult(1, db, { model }), /latest enrichment/);

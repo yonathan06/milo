@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import type { LanguageModel } from 'ai';
 import { MarketingDatabase } from './database.ts';
+import { enrichmentModels } from './enrichment-models.ts';
 import { enrichAndAssess } from './enrichment-pipeline.ts';
 
 export async function runAssessmentCli(args: string[], dependencies: { database?: MarketingDatabase; model?: LanguageModel; processWork?: typeof enrichAndAssess; log?: (message: string) => void } = {}) {
@@ -12,7 +13,7 @@ export async function runAssessmentCli(args: string[], dependencies: { database?
   const id = Number(values['result-id']);
   if (!Number.isSafeInteger(id) || id < 1) throw new Error('--result-id must be a positive integer.');
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-  const model = dependencies.model ?? (apiKey ? createOpenRouter({ apiKey })(values.model ?? process.env.GTM_ASSESSMENT_MODEL ?? process.env.GTM_VERIFICATION_MODEL ?? process.env.GTM_ENRICHMENT_MODEL ?? 'deepseek/deepseek-v4.1-flash') : undefined);
+  const model = dependencies.model ?? (apiKey ? createOpenRouter({ apiKey })(enrichmentModels(process.env, { assessment: values.model }).assessment) : undefined);
   if (!model) throw new Error('Set OPENROUTER_API_KEY for assessment.');
   const db = dependencies.database ?? new MarketingDatabase(undefined, { initializeSchema: false });
   try {

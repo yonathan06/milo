@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
+import { diagnosticStep, reportDiagnostic, type DiagnosticObserver } from './work-diagnostics.ts';
 import type { Collection, Source } from './community-scraper.ts';
 import type { ProviderRun } from './scraping-metadata.ts';
 
@@ -18,7 +19,7 @@ const runSchema = z.object({ data: z.object({
 const terminal = new Set(['SUCCEEDED', 'FAILED', 'TIMED-OUT', 'ABORTED']);
 type Platform = 'facebook' | 'reddit';
 export interface ApifyOptions {
-  apiKey?: string; maxPosts?: number; maxChargeUsd?: number; fetch?: typeof globalThis.fetch;
+  apiKey?: string; maxPosts?: number; maxChargeUsd?: number; fetch?: typeof globalThis.fetch; onDiagnostic?: DiagnosticObserver;
   abortSignal?: AbortSignal; pollDelayMs?: number; timeoutMs?: number;
 }
 
@@ -101,7 +102,10 @@ async function runActor(actorId: string, kind: ProviderRun['kind'], input: Recor
   let finished = false;
   let error: string | undefined;
   let items: Record<string, unknown>[] = [];
-  const request = async (path: string, init: RequestInit = {}, abortSignal = signal): Promise<unknown> => {
+  const startedAt = Date.now();
+  const request = async (path: string, init: RequestInit = {}, abortSignal = signal): Promise<unknown> => diagnosticStep(options.onDiagnostic,
+    path.startsWith('acts/') ? 'apify.start' : path.startsWith('datasets/') ? 'apify.dataset' : path.includes('/abort') ? 'apify.abort' : 'apify.poll',
+    { actorId, kind, runId: trace.runId, timeoutMs: 30000 }, async () => {
     const response = await fetch(`https://api.apify.com/v2/${path}`, {
       ...init, redirect: 'error', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.any([abortSignal, AbortSignal.timeout(30000)]),
@@ -120,7 +124,7 @@ async function runActor(actorId: string, kind: ProviderRun['kind'], input: Recor
       } finally { await reader.cancel(); }
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  };
+  });
   const update = (run: z.infer<typeof runSchema>['data']) => Object.assign(trace, {
     runId: run.id, status: run.status, datasetId: run.defaultDatasetId, buildId: run.buildId,
     startedAt: run.startedAt, finishedAt: run.finishedAt ?? undefined, usageTotalUsd: run.usageTotalUsd,
@@ -132,6 +136,8 @@ async function runActor(actorId: string, kind: ProviderRun['kind'], input: Recor
     while (!terminal.has(run.status)) {
       await delay(options.pollDelayMs ?? 1000, undefined, { signal });
       run = runSchema.parse(await request(`actor-runs/${trace.runId}?waitForFinish=10`)).data; update(run);
+      reportDiagnostic(options.onDiagnostic, { step: 'apify.run', status: terminal.has(run.status) ? 'completed' : 'waiting', elapsedMs: Date.now() - startedAt,
+        fields: { actorId, runId: trace.runId, runStatus: run.status, usageTotalUsd: trace.usageTotalUsd } });
     }
     finished = true;
     if (run.status !== 'SUCCEEDED') throw new Error(`Apify run ${trace.runId} ended with ${run.status}.`);

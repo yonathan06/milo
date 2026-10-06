@@ -3,7 +3,10 @@ import { BlockList, isIP } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { load } from 'cheerio';
 import { createRequire } from 'node:module';
+import { diagnosticStep, type DiagnosticObserver } from './work-diagnostics.ts';
 import { scrapeWithFirecrawl } from './firecrawl.ts';
+import { renderWebHtml } from './rendered-web.ts';
+import { cleanExtractionHtml, compactExtractionHtml } from './extraction-html.ts';
 import { collectWithApify } from './apify.ts';
 import type { ProviderRun } from './scraping-metadata.ts';
 const robotsParser = createRequire(import.meta.url)('robots-parser') as (url: string, text: string) => {
@@ -11,10 +14,10 @@ const robotsParser = createRequire(import.meta.url)('robots-parser') as (url: st
   getCrawlDelay(userAgent: string): number | undefined;
 };
 
-export const collectors = ['auto', 'native', 'firecrawl', 'apify'] as const;
+export const collectors = ['auto', 'native', 'playwright', 'firecrawl', 'apify'] as const;
 export type Collector = typeof collectors[number];
 export interface Source {
-  url: string; fetchedAt: string; text: string; collector?: 'native' | 'firecrawl' | 'apify';
+  url: string; fetchedAt: string; text: string; collector?: 'native' | 'playwright' | 'firecrawl' | 'apify'; format?: 'text' | 'html';
   provider?: { actorId: string; runId: string; datasetId: string };
   kind?: 'posts' | 'community_metadata' | 'web_page';
 }
@@ -41,6 +44,23 @@ export async function assertPublicUrl(url: URL) {
   })) throw new Error('Refusing a non-public network destination.');
 }
 
+export function contentDateMetadata(html: string): string[] {
+  const $ = load(html);
+  const dates = $('meta[property="article:published_time"], meta[property="article:modified_time"], meta[name="date"], meta[name="pubdate"], meta[itemprop="datePublished"], meta[itemprop="dateModified"], time[datetime], [itemprop="datePublished"], [itemprop="dateModified"]').map((_, el) => {
+    const node = $(el);
+    return `${node.attr('property') ?? node.attr('name') ?? node.attr('itemprop') ?? 'time datetime'}: ${node.attr('content') ?? node.attr('datetime') ?? node.text().trim()}`;
+  }).get();
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      if (['datePublished', 'dateModified', 'uploadDate'].includes(key) && typeof child === 'string') dates.push(`${key}: ${child}`);
+      else if (child && typeof child === 'object') visit(child);
+    }
+  };
+  $('script[type="application/ld+json"]').each((_, el) => { try { visit(JSON.parse($(el).text())); } catch { /* Ignore malformed structured metadata. */ } });
+  return [...new Set(dates)].slice(0, 30);
+}
+
 export function htmlDocument(html: string, url: string): string {
   const $ = load(html);
   const metadata = $('meta[property^="og:"], meta[name="description"], meta[name="generator"]').map((_, el) =>
@@ -53,7 +73,7 @@ export function htmlDocument(html: string, url: string): string {
       return ['https:', 'http:', 'mailto:'].includes(link.protocol) ? `${$(el).text().trim()} ${link.href}` : '';
     } catch { return ''; }
   }).get();
-  return [`Title: ${$('title').text()}`, ...metadata, ...structured,
+  return [`Title: ${$('title').text()}`, ...contentDateMetadata(html), ...metadata, ...structured,
     $('body').text().replace(/\s+/g, ' ').trim(), 'Public links:', ...links].join('\n').slice(0, 40000);
 }
 
@@ -62,6 +82,7 @@ export async function collectCommunitySources(input: string, options: {
   abortSignal?: AbortSignal;
   redditToken?: string;
   collector?: Collector;
+  onDiagnostic?: DiagnosticObserver;
   firecrawlApiKey?: string;
   apifyApiKey?: string;
   maxPosts?: number;
@@ -76,14 +97,14 @@ export async function collectCommunitySources(input: string, options: {
     : belongsTo('reddit.com') || belongsTo('redd.it') ? 'reddit' : 'web';
   const collection: Collection = { platform, sources: [], limitations: [] };
   const selected = options.collector ?? process.env.GTM_SCRAPE_COLLECTOR ?? 'auto';
-  if (!collectors.includes(selected as Collector)) throw new Error('Collector must be auto, native, firecrawl, or apify.');
+  if (!collectors.includes(selected as Collector)) throw new Error('Collector must be auto, native, playwright, firecrawl, or apify.');
   const apifyApiKey = (options.apifyApiKey ?? process.env.APIFY_KEY)?.trim() ?? '';
   const redditToken = (options.redditToken ?? process.env.REDDIT_ACCESS_TOKEN)?.trim();
   if ((platform === 'facebook' || platform === 'reddit') && (selected === 'apify'
     || selected === 'auto' && apifyApiKey && !(platform === 'reddit' && redditToken))) {
     return collectWithApify(input, platform, {
       apiKey: apifyApiKey, maxPosts: options.maxPosts, maxChargeUsd: options.apifyMaxChargeUsd,
-      fetch: options.fetch, abortSignal: options.abortSignal,
+      fetch: options.fetch, abortSignal: options.abortSignal, onDiagnostic: options.onDiagnostic,
     });
   }
   if (selected === 'apify' && platform === 'web') throw new Error('The Apify collector supports Facebook group and Reddit community URLs only.');
@@ -95,7 +116,7 @@ export async function collectCommunitySources(input: string, options: {
   const validate = options.validateUrl ?? assertPublicUrl;
   let allowed: ((target: URL) => boolean) | undefined;
   let crawlDelayMs = 0;
-  const read = async (target: URL, headers: Record<string, string> = {}, redirects = 0): Promise<{ text: string; url: string; type: string }> => {
+  const read = async (target: URL, headers: Record<string, string> = {}, redirects = 0): Promise<{ text: string; url: string; type: string }> => diagnosticStep(options.onDiagnostic, 'collection.http', { hostname: target.hostname, path: target.pathname, redirects, timeoutMs: 20000 }, async () => {
     await validate(target);
     if (allowed && !allowed(target)) throw new Error(`robots.txt disallows ${target.href}`);
     await delay(Math.max(options.requestDelayMs ?? 1100, crawlDelayMs), undefined, { signal: options.abortSignal });
@@ -131,9 +152,9 @@ export async function collectCommunitySources(input: string, options: {
       } finally { await reader.cancel(); }
     }
     return { text: Buffer.concat(chunks).toString('utf8'), url: target.href, type: response.headers.get('content-type') ?? '' };
-  };
-  const add = (url: string, text: string, collector: 'native' | 'firecrawl' = 'native', kind: Source['kind'] = 'web_page') => collection.sources.push({
-    url, text: text.slice(0, 40000), fetchedAt: new Date().toISOString(), collector, kind,
+  }, (page) => ({ characters: page.text.length, contentType: page.type }));
+  const add = (url: string, text: string, collector: 'native' | 'playwright' | 'firecrawl' = 'native', kind: Source['kind'] = 'web_page', format: Source['format'] = 'text') => collection.sources.push({
+    url, text: format === 'html' ? compactExtractionHtml(text, 40000) : text.slice(0, 40000), fetchedAt: new Date().toISOString(), collector, kind, format,
   });
   if (platform === 'reddit') {
     const token = redditToken;
@@ -162,7 +183,8 @@ export async function collectCommunitySources(input: string, options: {
     return collection;
   }
   const firecrawlApiKey = (options.firecrawlApiKey ?? process.env.FIRECRAWL_API_KEY)?.trim() ?? '';
-  const useFirecrawl = selected === 'firecrawl' || (selected === 'auto' && Boolean(firecrawlApiKey));
+  const usePlaywright = selected === 'playwright' || selected === 'auto';
+  const useFirecrawl = selected === 'firecrawl';
   if (useFirecrawl && !firecrawlApiKey) throw new Error('Set FIRECRAWL_API_KEY to use the Firecrawl collector.');
   // Fail closed when robots cannot be fetched, except an explicit 404 (no policy).
   const robotsUrl = new URL('/robots.txt', url);
@@ -183,13 +205,22 @@ export async function collectCommunitySources(input: string, options: {
   const fetchPage = async (target: URL, json = false) => {
     if (robots.isAllowed(target.href, userAgent) === false) throw new Error(`robots.txt disallows ${target.href}`);
     // Discourse's public JSON endpoints remain native; render only HTML community pages.
+    if (usePlaywright && !json) {
+      await delay(Math.max(options.requestDelayMs ?? 1100, crawlDelayMs), undefined, { signal: options.abortSignal });
+      const rendered = await renderWebHtml(target, { validateUrl: validate, isAllowed: (next) => allowed!(next), abortSignal: options.abortSignal, onDiagnostic: options.onDiagnostic });
+      const cleaned = cleanExtractionHtml(rendered.html, rendered.url, contentDateMetadata(rendered.html));
+      add(rendered.url, cleaned, 'playwright', 'web_page', 'html');
+      collection.limitations.push(...rendered.limitations);
+      return rendered.html;
+    }
     if (useFirecrawl && !json) {
       await delay(Math.max(options.requestDelayMs ?? 1100, crawlDelayMs), undefined, { signal: options.abortSignal });
-      const page = await scrapeWithFirecrawl(target, {
+      const page = await diagnosticStep(options.onDiagnostic, 'collection.firecrawl', { hostname: target.hostname, path: target.pathname }, () => scrapeWithFirecrawl(target, {
         apiKey: firecrawlApiKey, fetch, abortSignal: options.abortSignal, validateUrl: validate,
         isAllowed: (next) => allowed!(next) && robots.isAllowed(next.href, 'FirecrawlAgent') !== false,
-      });
-      add(page.url, page.text, 'firecrawl');
+      }), (page) => ({ characters: page.text.length }));
+      if (page.html) add(page.url, cleanExtractionHtml(page.html, page.url, contentDateMetadata(page.html)), 'firecrawl', 'web_page', 'html');
+      else add(page.url, page.text, 'firecrawl');
       if (page.warning) collection.limitations.push(`Firecrawl warning: ${page.warning.slice(0, 1000)}`);
       return page.html;
     }
@@ -200,7 +231,7 @@ export async function collectCommunitySources(input: string, options: {
     else {
       if (!/text\/html|application\/xhtml\+xml/i.test(page.type)) throw new Error('Expected an HTML community page.');
       if (/captcha|verify you are human|log in to continue/i.test(page.text)) throw new Error('Login or bot challenge; no bypass attempted.');
-      add(page.url, htmlDocument(page.text, page.url));
+      add(page.url, cleanExtractionHtml(page.text, page.url, contentDateMetadata(page.text)), 'native', 'web_page', 'html');
     }
     return page.text;
   };
@@ -233,13 +264,13 @@ export async function collectCommunitySources(input: string, options: {
           if (useFirecrawl) break; // Do not keep spending credits after a provider/access failure.
         }
       }
-      collection.limitations.push(useFirecrawl
+      collection.limitations.push(useFirecrawl || usePlaywright
         ? 'Coverage is limited to the rendered landing page and at most two public about/contact/rules pages; private content and complete activity history are unavailable.'
         : 'Coverage is limited to the landing page and at most two public about/contact/rules pages; dynamic/private content and complete activity history are unavailable.');
     }
   } catch (error) {
     collection.limitations.push(String(error));
-    if (useFirecrawl && !collection.sources.length) {
+    if ((useFirecrawl || usePlaywright) && !collection.sources.length) {
       collection.error = error instanceof Error ? error.message : String(error);
     }
   }

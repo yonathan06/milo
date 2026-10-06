@@ -2,7 +2,7 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema/index.ts";
 
-/** Local Node development only; deliberately separate from the Worker transport. */
+/** Loopback development only; deliberately separate from the deployed Worker transport. */
 export function validateLocalDatabaseUrl(value: string): string {
   let url: URL;
   try {
@@ -27,9 +27,12 @@ export function createLocalDatabase(databaseUrl: string) {
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000,
   });
-  pool.on("error", () => console.error("Local database idle connection failed"));
+  let closing = false;
+  // Workerd's net compatibility may emit an idle socket error during intentional
+  // pool teardown. In-flight queries still reject; don't report shutdown as failure.
+  pool.on("error", () => { if (!closing) console.error("Local database idle connection failed"); });
   const db = drizzle({ client: pool, schema });
-  return { db, close: () => pool.end() };
+  return { db, close: () => { closing = true; return pool.end(); } };
 }
 
 export type LocalDatabase = ReturnType<typeof createLocalDatabase>["db"];

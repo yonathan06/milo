@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MockLanguageModelV4 } from 'ai/test';
+import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 import { z } from 'zod';
 import { evidenceUrlSchema } from '../src/evidence-url.ts';
 import { enrichmentSchema, enrichmentOutputSchema, extractCommunity, validateEvidence, enrichSearchResult } from '../src/community-enrichment.ts';
+import type { WorkDiagnostic } from '../src/work-diagnostics.ts';
 import { hasEnrichmentData } from '../src/enrichment-data.ts';
 import { extractionDisplayStatus, fieldLabel, partitionEnrichmentData } from '../web/enrichment-display.ts';
 import { MarketingDatabase } from '../src/database.ts';
@@ -16,13 +17,18 @@ const sources = [{ url: 'https://example.com/community', text: 'Event Profession
 const empty = enrichmentSchema.parse({ communityName: null, description: null, lastObservedActivity: null, memberCount: null, location: null, language: null, admins: [], publicContactRoutes: [], rulesAndPromotionPolicy: [], latestPosts: [], eventAndVideoSignals: [], outreachAngles: [], limitations: ['No sources supplied.'] });
 const valid = { ...empty, communityName: { value: 'Event Professionals', evidence: { sourceUrl: sources[0].url, quote: 'Event Professionals' } }, limitations: [] };
 function response(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data) }], finishReason: { unified: 'stop' as const, raw: undefined },
-    usage: { inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 100, text: 100, reasoning: undefined } }, warnings: [] };
+  return { stream: simulateReadableStream({ chunks: [
+    { type: 'stream-start' as const, warnings: [] }, { type: 'text-start' as const, id: 'text' },
+    { type: 'text-delta' as const, id: 'text', delta: JSON.stringify(data) }, { type: 'text-end' as const, id: 'text' },
+    { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: undefined },
+      usage: { inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 100, text: 100, reasoning: undefined } } },
+  ] }) };
 }
 test('model output schema requires all fields without unsupported URL formats', () => {
   const schema = z.toJSONSchema(enrichmentOutputSchema);
   assert.ok(schema.required?.includes('visibility'));
   assert.ok(schema.required?.includes('communityMetrics'));
+  assert.ok(schema.required?.includes('contentDates'));
   assert.equal(JSON.stringify(schema).includes('"format":"uri"'), false);
   assert.equal(evidenceUrlSchema.safeParse('not a URL').success, false);
   assert.equal(evidenceUrlSchema.safeParse('https://example.com').success, true);
@@ -36,22 +42,57 @@ test('empty extraction is rejected; limitations/angles alone are not factual enr
   assert.throws(() => validateEvidence({ ...valid, communityName: { ...valid.communityName, evidence: { ...valid.communityName.evidence, quote: 'invented' } } }, sources), /not found/);
 });
 test('model receives sources on both passes and empty output triggers one correction', async () => {
-  const model = new MockLanguageModelV4({ doGenerate: [response(empty), response(valid)] });
+  const model = new MockLanguageModelV4({ doStream: [response(empty), response(valid)] });
   assert.equal((await extractCommunity(sources, model)).communityName?.value, 'Event Professionals');
-  assert.equal(model.doGenerateCalls.length, 2);
-  for (const call of model.doGenerateCalls) {
+  assert.equal(model.doStreamCalls.length, 2);
+  for (const call of model.doStreamCalls) {
     const user = JSON.stringify(call.prompt.filter((message) => message.role === 'user'));
     assert.ok(user.includes(sources[0].url));
     assert.ok(user.includes(sources[0].text));
   }
-  assert.ok(JSON.stringify(model.doGenerateCalls[1].prompt).includes('no evidenced facts'));
+  assert.ok(JSON.stringify(model.doStreamCalls[1].prompt).includes('no evidenced facts'));
 });
+test('streamed extraction limits input/output and reports first-token progress without logging source bodies', async () => {
+  const largeSources = [{ ...sources[0], text: `${sources[0].text}\n${'Navigation boilerplate. '.repeat(2500)}` }];
+  const model = new MockLanguageModelV4({ doStream: response(valid) });
+  const diagnostics: WorkDiagnostic[] = [];
+  const data = await extractCommunity(largeSources, model, undefined, (event) => diagnostics.push(event));
+  assert.match(data.limitations.join(' '), /omitted content is unknown/);
+  const call = model.doStreamCalls[0];
+  assert.equal(call.maxOutputTokens, 4096);
+  assert.deepEqual(call.providerOptions?.openrouter, { reasoning: { enabled: false }, provider: { sort: 'latency' } });
+  const input = diagnostics.find((event) => event.step === 'extraction.input');
+  assert.ok(Number(input?.fields?.selectedChars) <= 16000);
+  assert.ok(Number(input?.fields?.originalChars) > 40000);
+  const streaming = diagnostics.find((event) => event.status === 'streaming');
+  assert.ok(Number(streaming?.fields?.firstTokenMs) >= 0);
+  assert.ok(Number(streaming?.fields?.outputChars) > 0);
+  assert.ok(!JSON.stringify(diagnostics).includes(sources[0].text));
+  assert.equal(diagnostics.at(-1)?.fields?.finishReason, 'stop');
+});
+
+test('cancelled extraction does not retry an outstanding provider request', async () => {
+  const controller = new AbortController();
+  const model = new MockLanguageModelV4({ doStream: async (options) => {
+    await new Promise((_, reject) => {
+      const signal = options.abortSignal!;
+      if (signal.aborted) reject(signal.reason);
+      else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+    return response(valid);
+  } });
+  const timer = setTimeout(() => controller.abort(new Error('Extraction deadline exceeded')), 30);
+  try { await assert.rejects(extractCommunity(sources, model, controller.signal)); }
+  finally { clearTimeout(timer); }
+  assert.equal(model.doStreamCalls.length, 1);
+});
+
 test('repeated empty output fails; missing source content never calls the model', async () => {
-  const model = new MockLanguageModelV4({ doGenerate: response(empty) });
+  const model = new MockLanguageModelV4({ doStream: [response(empty), response(empty)] });
   await assert.rejects(extractCommunity(sources, model), /no evidenced facts/);
-  assert.equal(model.doGenerateCalls.length, 2);
+  assert.equal(model.doStreamCalls.length, 2);
   await assert.rejects(extractCommunity([], model), /non-empty collected sources/);
-  assert.equal(model.doGenerateCalls.length, 2);
+  assert.equal(model.doStreamCalls.length, 2);
 });
 test('pipeline retains collected sources but saves empty extraction as failed', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'gtm-extraction-'));

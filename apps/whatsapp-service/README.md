@@ -49,7 +49,10 @@ is implemented yet; pending runs remain stored, not marked completed.
 
 ## Files
 
-- `src/index.ts`: native Worker routing and scheduled handler.
+- `src/index.ts`: production entry point with Neon transport.
+- `src/service.ts`: shared HTTP, Queue and scheduled handlers.
+- `src/local.ts`: local-only simulation/state endpoints and loopback pg transport.
+- `ui/`: framework-free chat simulator and service inspector.
 - `src/env.ts`: binding and queue-reference types.
 - `src/http/webhook.ts`: verification, bounded raw-body authentication and HTTP outcomes.
 - `src/whatsapp/signature.ts`: Web Crypto HMAC verification.
@@ -59,10 +62,73 @@ is implemented yet; pending runs remain stored, not marked completed.
 - `src/outbox/dispatch.ts`: processing claims/publication/recovery.
 - `src/queues/processing.ts`: validated queue intake, durable logical-run handoff,
   per-item acknowledgment/retry policy.
-- `src/runtime/database.ts`: shared Worker/local persistence types (local pg is type-only).
+- `src/runtime/database.ts`: shared persistence types; local pg is excluded from the production entry point.
 
 Helpers stay together where their transaction boundary matters; there are no empty
 modules reserved for future services.
+
+## Local simulator UI
+
+Cloudflare supports [local Queues with Wrangler/Miniflare](https://developers.cloudflare.com/queues/configuration/local-development/).
+The local queue automatically invokes this Worker's consumer: no cloud account,
+remote queue, or separate queue container is needed. This is local emulation, not
+production durability/load qualification; remote Queues dev mode is unsupported.
+
+From the repository root (Node 24+):
+
+```sh
+docker compose up -d --wait postgres
+pnpm --filter @video-editor-agent/whatsapp-service dev:setup
+pnpm --filter @video-editor-agent/whatsapp-service dev
+# Open http://127.0.0.1:8787
+```
+
+`dev:setup` applies committed migrations to the loopback database in
+`wrangler.local.jsonc` and refuses remote URLs. It does not reset existing data.
+If port 5432 is occupied, change Compose's `POSTGRES_PORT` and the URL in that local
+config together. Do not override `LOCAL_DATABASE_URL` in `.dev.vars`, since the
+setup script reads the config directly. Do not put real Meta secrets in the local
+config; these signing values are deliberately fake, local-only credentials.
+
+The UI lets you:
+
+- Send text through a generated Meta-style webhook signed server-side; browser
+  code never receives signing secrets. The real signature/ingestion handler runs.
+- Change simulated sender, replay the same provider message ID, or use an invalid
+  signature to verify rejection without creating a message.
+- Disable auto-dispatch to inspect pending outbox rows, then run the dispatcher.
+- Watch local Queue consumption create one pending run per inbound message.
+- Inspect persisted messages, processing/acquisition intents and runs in a live
+  database snapshot. Counts cover the latest 100 messages for the selected sender;
+  they are not queue-depth metrics. Status polls every 1.5 seconds.
+
+Local Cron triggers do not fire automatically. The UI dispatch button invokes the
+same dispatcher; `--test-scheduled` also exposes
+`http://127.0.0.1:8787/__scheduled` for exercising the scheduled handler. See
+[testing Cron triggers locally](https://developers.cloudflare.com/workers/configuration/cron-triggers/#test-cron-triggers-locally).
+Wrangler local state lives in the ignored `.wrangler/local-state` directory.
+
+Only `wrangler.local.jsonc` references `src/local.ts` and the `ui/` assets. The
+production entry point does not expose simulation/admin endpoints or include the
+local PostgreSQL adapter. Local endpoints accept loopback hosts and the optional `SIMULATOR_PUBLIC_ORIGIN`
+host configured in `wrangler.local.jsonc`. That origin also permits HTTPS browser
+requests when a tunnel forwards HTTP to the Worker. Update/remove this setting when
+your temporary tunnel changes. Other cross-origin browser requests are rejected.
+This is NOT authentication: anyone with the configured tunnel URL can inspect data
+and submit simulation/dispatch requests. Use only disposable development data and
+stop the tunnel when finished; add Cloudflare Access before sharing it more broadly.
+Keep the Worker bound to `127.0.0.1` and never deploy the local config. Raw simulation
+requests are limited to 8 KiB and outgoing test text to 4096 characters. Use fake
+phone numbers and message content only.
+
+Local `pg` uses Workers' supported [node:net compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/net/)
+to reach Docker PostgreSQL directly. No Hyperdrive is added. The same service
+handlers use the existing Neon transport when deployed. `dev:staging` retains the
+previous Neon-backed local Worker mode with `wrangler.jsonc`.
+
+**This is intake visualization, not an AI chatbot:** no model runs or assistant
+responses are simulated. Pending runs are genuinely persisted and awaiting the
+future coordinator/runner.
 
 ## Local checks
 
@@ -112,9 +178,8 @@ and cascaded fixture cleanup. They do not qualify deployed Workers/Neon or Queue
    after fixing their cause. Do not indiscriminately replay malformed jobs.
 4. Supply `DATABASE_URL`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` through
    managed Worker secrets. Local `.dev.vars.example` is a template only; never
-   commit `.dev.vars`. Local Worker database access requires a reachable Neon
-   pooled TLS endpoint; local PostgreSQL is used by Node integration tests, not
-   exposed through an ad hoc Worker TCP transport.
+   commit `.dev.vars`. The production config and `dev:staging` use a reachable
+   Neon pooled TLS endpoint. The separate simulator config uses loopback PostgreSQL.
 5. Deploy the Worker and configure Meta's webhook URL as
    `https://<worker-host>/webhooks/whatsapp`, with the configured verify token.
 

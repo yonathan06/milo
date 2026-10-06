@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Milo · WhatsApp simulator</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23247a5c'/%3E%3Ctext x='8' y='24' fill='white' font-size='24'%3Em%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header><div class="brand">m<span>ilo</span><small>LOCAL LAB</small></div><span class="badge">Wrangler · local Queues · PostgreSQL</span></header>
+  <main>
+    <section class="chat-panel">
+      <div class="chat-header"><div class="avatar">M</div><div><h1>WhatsApp simulator</h1><p>Real ingestion. No real WhatsApp sends.</p></div></div>
+      <div class="settings"><label>Simulated sender<input id="sender" value="491234567890" inputmode="numeric" maxlength="15"></label><p>International digits, no +. Change sender to test isolation.</p></div>
+      <div id="messages" class="messages" aria-live="polite"><p class="empty">Send your first message to inspect its journey.</p></div>
+      <form id="composer">
+        <label class="sr-only" for="text">Message</label><textarea id="text" rows="3" maxlength="4096" placeholder="Type a message…">Hello Milo [ref: local-demo]</textarea>
+        <div class="options"><label><input id="auto-dispatch" type="checkbox" checked> Dispatch after send</label><label><input id="invalid" type="checkbox"> Invalid signature</label></div>
+        <div class="buttons"><button id="duplicate" type="button" class="secondary" disabled>Resend duplicate</button><button id="send" type="submit">Send message ↗</button></div>
+      </form>
+      <p class="note">The current flow ends at a durable <strong>pending agent run</strong>. No AI replies or outbound sender exist yet.</p>
+    </section>
+    <section class="inspector">
+      <div class="inspector-header"><div><p class="eyebrow">SERVICE INSPECTOR</p><h2>Follow the handoff</h2></div><button id="refresh" class="secondary">Refresh</button></div>
+      <div class="flow"><span>Webhook</span><b>→</b><span>Outbox</span><b>→</b><span>Local queue</span><b>→</b><span>Pending run</span></div>
+      <div class="metrics"><div><strong id="message-count">0</strong><span>Messages</span></div><div><strong id="pending-count">0</strong><span>Outbox waiting</span></div><div><strong id="run-count">0</strong><span>Pending runs</span></div></div>
+      <div class="toolbar"><button id="dispatch">Run outbox dispatcher</button><span>Queue consumer runs automatically.</span></div>
+      <p id="status" role="status">Connecting to local services…</p>
+      <h3>Message processing</h3><div id="records" class="records"></div>
+      <details><summary>Database snapshot</summary><pre id="snapshot">{}</pre></details>
+      <h3>Activity</h3><div id="activity" class="activity" aria-live="polite"></div>
+      <p class="note">Queue handoff is inferred from outbox/run records, not queue depth. Acquisition analytics intents remain pending. Showing the latest 100 messages for this sender.</p>
+    </section>
+  </main>
+</body>
+</html>

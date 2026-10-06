@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../src/assessment-state.ts';
 import type { AssessmentAttempt, AssessmentContext } from '../../src/result-assessment.ts';
 import { hasEnrichmentData } from '../../src/enrichment-data.ts';
-import { readResultsPage } from './results-page-store.ts';
+import { readFilteredEnrichmentResults, readResultsPage } from './results-page-store.ts';
 import { readLinkRankingDisplay } from './link-ranking-display.ts';
 import type { ResultsPageRequest } from '../results-page.ts';
 
@@ -69,6 +69,9 @@ export function openReadStore(path = process.env.GTM_DATABASE_PATH ?? resolve('d
     },
     resultsPage(request: ResultsPageRequest) {
       return readResultsPage(db, request);
+    },
+    filteredEnrichmentResults(request: Parameters<typeof readFilteredEnrichmentResults>[1]) {
+      return readFilteredEnrichmentResults(db, request);
     },
     results() {
       // Keep unlinked results too: deleting a query does not delete its saved URLs.

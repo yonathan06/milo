@@ -3,11 +3,7 @@ import { matchesResult } from './result-filters.ts';
 import { compareMatchResults } from './assessment-display.ts';
 import type { AllResult } from './server/store';
 
-export const resultsPageSchema = z.object({
-  page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
-  pageSize: z.union([z.literal(25), z.literal(50), z.literal(100)]).default(25),
-  sort: z.enum(['fit', 'jev', 'posting', 'adminContact', 'result', 'countries', 'segments', 'collected']).default('fit'),
-  descending: z.boolean().default(true),
+export const resultsFilterSchema = z.object({
   search: z.string().max(500).default(''),
   countries: z.array(z.string().max(10)).max(250).default([]),
   segments: z.array(z.number().int().positive()).max(1000).default([]),
@@ -15,6 +11,14 @@ export const resultsPageSchema = z.object({
   jevMax: z.number().min(0).max(100).default(100),
   ranking: z.enum(['all', 'ranked', 'unranked']).default('all'),
   enrichment: z.enum(['all', 'enriched', 'not_enriched']).default('all'),
+}).refine((request) => request.jevMin <= request.jevMax, { message: 'Minimum relevance must not exceed maximum relevance', path: ['jevMin'] });
+export type ResultsFilterRequest = z.infer<typeof resultsFilterSchema>;
+export const resultsPageSchema = z.object({
+  ...resultsFilterSchema.shape,
+  page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
+  pageSize: z.union([z.literal(25), z.literal(50), z.literal(100)]).default(25),
+  sort: z.enum(['fit', 'jev', 'posting', 'adminContact', 'result', 'countries', 'segments', 'collected']).default('fit'),
+  descending: z.boolean().default(true),
 }).refine((request) => request.jevMin <= request.jevMax, { message: 'Minimum relevance must not exceed maximum relevance', path: ['jevMin'] });
 export type ResultsPageRequest = z.infer<typeof resultsPageSchema>;
 
@@ -45,6 +49,8 @@ export function paginateResults(results: AllResult[], request: ResultsPageReques
     results: filtered.slice((page - 1) * request.pageSize, page * request.pageSize),
     page, pageCount, matchedCount: filtered.length, totalCount: results.length,
     enrichedCount: results.filter((result) => result.enriched).length,
+    matchedPendingCount: filtered.filter((result) => result.assessment_status !== 'complete').length,
+    matchedPendingAssessmentCount: filtered.filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length,
     pendingCount: results.filter((result) => result.assessment_status !== 'complete').length,
     pendingAssessmentCount: results.filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length,
     countries: [...new Set(results.flatMap((result) => result.discoveries.map((item) => item.country_code)))].sort(),

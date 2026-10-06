@@ -82,6 +82,9 @@ test('SQLite selects only the requested page with a fixed query count, including
     assert.equal(matched.matchedCount, 2500);
     assert.equal(matched.results.length, 25);
     assert.equal(matched.pendingCount, 5000, 'global enrichment counts ignore filters');
+    assert.equal(matched.matchedPendingCount, 2500, 'filtered enrichment counts include every matching page');
+    assert.equal(matched.matchedPendingAssessmentCount, 0);
+    assert.equal(filtered.matchedPendingCount, 0);
     assert.deepEqual(matched.countries, ['DE', 'US']);
     assert.equal(readResultsPage(db, resultsPageSchema.parse({ search: '%' })).matchedCount, 0, 'search is literal, not a LIKE pattern');
   } finally { db.close(); }

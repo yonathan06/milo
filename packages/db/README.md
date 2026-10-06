@@ -60,12 +60,15 @@ docker compose down -v            # DESTRUCTIVE: delete all local database data
 ```
 
 The migration CLI selects Node `pg` for loopback URLs and Neon for remote URLs.
-Local Node services should import `withLocalDatabase` / `createLocalDatabase` from
+Local Node services and the WhatsApp simulator's local-only Worker entry point
+should import `withLocalDatabase` / `createLocalDatabase` from
 `@video-editor-agent/db/local`; they have the same lifecycle pattern as the Worker
 factory and also work with `createAuth`. The local factory only accepts loopback
 hosts, cannot accidentally connect to a remote unpooled database, and is not exported
-from the Worker entry point. This setup runs apps on the host; container-to-container
-connections and a local Workers TCP proxy are not configured here.
+from the Worker entry point. This setup runs apps on the host; container-to-container connections are not
+configured here. The WhatsApp simulator uses Wrangler's Node `net` compatibility
+for direct loopback PostgreSQL access (no TCP proxy or Hyperdrive). See its
+[local UI instructions](../../apps/whatsapp-service/README.md#local-simulator-ui).
 
 Migrations run explicitly, never during request handling. Generation requires no
 connection or credentials. Keep migration SQL, snapshots and journal committed.

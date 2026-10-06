@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { MarketingDatabase } from '../../src/database.ts';
+import { enrichmentModels } from '../../src/enrichment-models.ts';
 import { enrichAndAssess } from '../../src/enrichment-pipeline.ts';
 import { enrichmentRequestSchema, type EnrichmentJob, type EnrichmentRequest } from '../enrichment.ts';
 import { openReadStore } from './store.ts';
@@ -19,11 +20,15 @@ export function createEnrichmentService(options: { path?: string; apiKey?: strin
     const request = enrichmentRequestSchema.parse(input);
     getStatus();
     if (job?.status === 'running') return { job: null, error: 'Enrichment or assessment is already running. Wait for it to finish.' };
+    const scopeStarted = Date.now();
+    logAction('enrichment.scope.started', { mode: request.mode ?? 'enrichment', filtered: Boolean(request.filters), segmentId: request.segmentId, resultId: request.resultId });
     const store = openReadStore(path());
-    let results;
-    try { results = request.segmentId === undefined ? store.results() : store.segment(request.segmentId)?.results; }
+    let results: ReturnType<typeof store.filteredEnrichmentResults> | undefined;
+    try { results = request.filters ? store.filteredEnrichmentResults(request.filters) : request.segmentId === undefined ? store.results() : store.segment(request.segmentId)?.results; }
     finally { store.close(); }
+    logAction('enrichment.scope.completed', { elapsedMs: Date.now() - scopeStarted, matchedCount: results?.length ?? 0 });
     if (!results) return { job: null, error: 'This segment no longer exists.' };
+    if (request.filters && !results.length) return { job: null, error: 'No results match the current filters.' };
     if (request.resultId !== undefined && !results.some((result) => result.id === request.resultId)) return { job: null, error: 'This result no longer exists in the requested scope.' };
     const pending = results.filter((result) => (request.resultId === undefined || result.id === request.resultId)
       && (request.mode !== 'assessment' || result.assessment_ready)
@@ -32,11 +37,12 @@ export function createEnrichmentService(options: { path?: string; apiKey?: strin
     const apiKey = (options.apiKey ?? process.env.OPENROUTER_API_KEY)?.trim();
     if (!apiKey) return { job: null, error: 'Set OPENROUTER_API_KEY in the server environment and restart the server.' };
     const provider = createOpenRouter({ apiKey });
-    const model = provider(process.env.GTM_ENRICHMENT_MODEL ?? 'deepseek/deepseek-v4.1-flash');
-    const verificationModel = process.env.GTM_VERIFICATION_MODEL ? provider(process.env.GTM_VERIFICATION_MODEL) : model;
-    const assessmentModel = process.env.GTM_ASSESSMENT_MODEL ? provider(process.env.GTM_ASSESSMENT_MODEL) : verificationModel;
+    const models = enrichmentModels();
+    const model = provider(models.extraction);
+    const verificationModel = provider(models.verification);
+    const assessmentModel = provider(models.assessment);
     job = { id: randomUUID(), status: 'running', finishedAt: null, results: pending.map((result) => ({ resultId: result.id, status: 'queued', phase: null, error: null })) };
-    logAction('enrichment.started', { jobId: job.id, mode: request.mode ?? 'enrichment', resultCount: pending.length });
+    logAction('enrichment.started', { jobId: job.id, mode: request.mode ?? 'enrichment', resultCount: pending.length, filters: request.filters ? JSON.stringify(request.filters) : undefined });
     void run(job, path(), { model, verificationModel, assessmentModel, assessmentOnly: request.mode === 'assessment', force: request.force });
     return { job: structuredClone(job), error: null };
   };
@@ -46,16 +52,27 @@ export function createEnrichmentService(options: { path?: string; apiKey?: strin
         let db: MarketingDatabase | undefined;
         progress.status = 'running';
         const context = { jobId: current.id, resultId: progress.resultId };
-        logAction('enrichment.result.started', context);
+        const startedAt = Date.now();
+        logAction('enrichment.result.started', { ...context, queuedRemaining: current.results.filter((result) => result.status === 'queued').length, timeoutMs: 720000 });
         try {
+          logAction('enrichment.database.opening', context);
           db = new MarketingDatabase(dbPath, { initializeSchema: false });
-          const result = await (options.processWork ?? enrichAndAssess)(progress.resultId, db, { ...settings, abortSignal: AbortSignal.timeout(720000), onPhase: (phase) => { progress.phase = phase; logAction('enrichment.result.phase', { ...context, phase }); } });
+          logAction('enrichment.database.opened', { ...context, elapsedMs: Date.now() - startedAt });
+          const result = await (options.processWork ?? enrichAndAssess)(progress.resultId, db, { ...settings, abortSignal: AbortSignal.timeout(720000),
+            onPhase: (phase) => { progress.phase = phase; logAction('enrichment.result.phase', { ...context, phase, elapsedMs: Date.now() - startedAt }); },
+            onDiagnostic: (event) => {
+              if (progress.step !== event.step) progress.outputChars = undefined;
+              progress.step = event.step; progress.stepStatus = event.status; progress.stepElapsedMs = event.elapsedMs; progress.lastActivityAt = new Date().toISOString();
+              if (typeof event.fields?.outputChars === 'number') progress.outputChars = event.fields.outputChars;
+              logAction(`enrichment.step.${event.status}`, { ...event.fields, ...context, phase: progress.phase, step: event.step, elapsedMs: event.elapsedMs, resultElapsedMs: Date.now() - startedAt }, event.error);
+            },
+          });
           progress.status = result.status;
           if (result.status === 'failed' || result.status === 'blocked') progress.error = progress.phase === 'assessment' ? 'Assessment failed. Enrichment is preserved; retry assessment without scraping.' : 'Collection/extraction failed or was blocked. Review result details before retrying.';
-          logAction(`enrichment.result.${result.status}`, { ...context, phase: progress.phase },
+          logAction(`enrichment.result.${result.status}`, { ...context, phase: progress.phase, elapsedMs: Date.now() - startedAt },
             result.status === 'failed' || result.status === 'blocked' ? (result.assessment?.error ?? result.enrichment?.error ?? progress.error) : undefined);
         } catch (error) {
-          logAction('enrichment.result.failed', { ...context, phase: progress.phase }, error);
+          logAction('enrichment.result.failed', { ...context, phase: progress.phase, step: progress.step, elapsedMs: Date.now() - startedAt }, error);
           progress.status = 'failed';
           progress.error = 'Could not process this result. Check initialized schema, provider settings, and latest enrichment.';
         } finally { db?.close(); }

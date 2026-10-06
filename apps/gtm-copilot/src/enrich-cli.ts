@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { MarketingDatabase } from './database.ts';
+import { enrichmentModels } from './enrichment-models.ts';
 import { enrichAndAssess } from './enrichment-pipeline.ts';
 import { collectors, type Collector } from './community-scraper.ts';
 
@@ -11,24 +12,24 @@ async function main() {
     help: { type: 'boolean', short: 'h' },
   } });
   if (values.help) {
-    console.log('Usage: pnpm enrich --result-id 1 [--collector auto|apify|firecrawl|native] [--posts 1..10] [--no-metadata] [--model MODEL] [--verification-model MODEL]');
+    console.log('Usage: pnpm enrich --result-id 1 [--collector auto|playwright|apify|firecrawl|native] [--posts 1..10] [--no-metadata] [--model MODEL] [--verification-model MODEL]');
     return;
   }
   const id = Number(values['result-id']);
   if (!Number.isSafeInteger(id) || id < 1) throw new Error('--result-id must be a positive integer.');
   if (values.collector !== undefined && !collectors.includes(values.collector as Collector)) {
-    throw new Error('--collector must be auto, apify, firecrawl, or native.');
+    throw new Error('--collector must be auto, playwright, apify, firecrawl, or native.');
   }
   const maxPosts = values.posts === undefined ? undefined : Number(values.posts);
   if (maxPosts !== undefined && (!Number.isSafeInteger(maxPosts) || maxPosts < 1 || maxPosts > 10)) {
     throw new Error('--posts must be between 1 and 10.');
   }
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
-  const model = apiKey ? createOpenRouter({ apiKey })(values.model ?? process.env.GTM_ENRICHMENT_MODEL
-    ?? 'deepseek/deepseek-v4.1-flash') : undefined;
-  const verificationModelId = values['verification-model'] ?? process.env.GTM_VERIFICATION_MODEL;
-  const verificationModel = apiKey && verificationModelId ? createOpenRouter({ apiKey })(verificationModelId) : model;
-  const assessmentModel = apiKey && process.env.GTM_ASSESSMENT_MODEL ? createOpenRouter({ apiKey })(process.env.GTM_ASSESSMENT_MODEL) : verificationModel;
+  const models = enrichmentModels(process.env, { extraction: values.model, verification: values['verification-model'] });
+  const provider = apiKey ? createOpenRouter({ apiKey }) : undefined;
+  const model = provider?.(models.extraction);
+  const verificationModel = provider?.(models.verification);
+  const assessmentModel = provider?.(models.assessment);
   const database = new MarketingDatabase();
   try {
     const attempt = await enrichAndAssess(id, database, {
