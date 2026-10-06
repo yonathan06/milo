@@ -3,7 +3,8 @@ import { pathToFileURL } from 'node:url';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { MarketingDatabase } from './database.ts';
 import { enrichAndAssess } from './enrichment-pipeline.ts';
-import { LinkRankingStore, rankLink, rankingModel } from './link-ranking.ts';
+import { LinkRankingStore, rankingSettings, rankingModel } from './link-ranking.ts';
+import { runLinkRankingQueue } from './link-ranking-queue.ts';
 
 function numberOption(value: string | undefined, fallback: number, name: string, min: number, max: number, integer = false) {
   const n = value === undefined ? fallback : Number(value);
@@ -55,23 +56,18 @@ export async function runLinkRankingCli(args: string[]) {
       }
       return;
     }
-    const links = store.links(resultId).filter((link) => values.force || !store.current(link, model)).slice(0, values.all ? undefined : limit);
+    const settings = rankingSettings();
+    const links = (values.force ? store.links(resultId) : store.pending(model, resultId)).slice(0, values.all ? undefined : limit);
     if (resultId !== undefined && !store.links(resultId).length) throw new Error(`Search result ${resultId} does not exist.`);
-    console.log(JSON.stringify({ mode: 'link-ranking', model, count: links.length, dryRun: Boolean(values['dry-run']) }));
+    console.log(JSON.stringify({ mode: 'link-ranking', model, count: links.length, ...settings, dryRun: Boolean(values['dry-run']) }));
     if (values['dry-run']) return;
-    let inputTokens = 0;
-    for (const link of links) {
-      try {
-        const response = await rankLink(link, { apiKey: process.env.TYPESAFE_API_KEY!, model });
-        store.save(link, model, response, null);
-        inputTokens += response.usage.input_tokens ?? 0;
-        console.log(JSON.stringify({ resultId: link.id, score: response.answers.relevance.score * 25, confidence: response.answers.relevance.confidence }));
-      } catch (error) {
-        // Stop on provider errors; successful rows are saved and rerunning resumes failed/unranked work.
-        store.save(link, model, null, error instanceof Error ? error.message : String(error));
-        throw error;
-      }
-    }
+    let inputTokens = 0; let processed = 0;
+    await runLinkRankingQueue(links, store, { apiKey: process.env.TYPESAFE_API_KEY!, model, force: values.force,
+      onProgress: (count, failed, tokens) => {
+        inputTokens += tokens; processed += count;
+        console.log(JSON.stringify({ processed, total: links.length, failed, inputTokens }));
+      },
+    });
     console.log(JSON.stringify({ inputTokens, estimatedCostUsd: inputTokens / 1_000_000 * 0.042, pricingNote: 'Jev published input-token rate; confirm current billing.' }));
   } finally { store.close(); db.close(); }
 }

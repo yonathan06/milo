@@ -1,0 +1,4 @@
+# Managed secrets in deployed Workers. Never commit .dev.vars.
+DATABASE_URL=postgresql://USER:PASSWORD@PROJECT-pooler.REGION.neon.tech/DATABASE?sslmode=require
+WHATSAPP_APP_SECRET=replace-with-meta-app-secret
+WHATSAPP_VERIFY_TOKEN=replace-with-random-verification-token

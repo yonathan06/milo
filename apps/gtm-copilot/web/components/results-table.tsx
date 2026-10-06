@@ -10,6 +10,13 @@ const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, sortFn
 const helper = createColumnHelper<typeof features, SegmentResult>();
 const segmentDiscoveries = (result: SegmentResult) => result.discoveries.filter((item): item is AllResultDiscovery => 'segment_id' in item && 'segment_name' in item);
 const columns = helper.columns([
+  helper.accessor((result) => result.jev_score ?? undefined, {
+    id: 'jev', header: 'Jev relevance', sortFn: sortFn_basic, sortUndefined: 'last',
+    cell: (info) => <div title="Preliminary relevance from saved search snippets; not outreach permission.">
+      <Badge>{info.getValue() == null ? 'Not ranked' : `${Math.round(info.getValue()!)} / 100`}</Badge>
+      <Show when={info.row.original.jev_confidence != null}><p class="mt-1 text-xs text-slate-500">{Math.round(info.row.original.jev_confidence! * 100)}% confidence</p></Show>
+    </div>,
+  }),
   helper.accessor((result) => result.match_score ?? undefined, {
     id: 'fit', header: 'Match score', sortFn: sortFn_basic, sortUndefined: 'last',
     cell: (info) => <div><Badge>{matchLabel(info.row.original)}</Badge><Show when={info.row.original.match_confidence}><p class="mt-1 text-xs text-slate-500">{info.row.original.match_confidence} confidence</p></Show></div>,

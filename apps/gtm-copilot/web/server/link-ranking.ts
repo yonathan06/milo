@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { LinkRankingStore, rankLink, rankingModel, type Link } from '../../src/link-ranking.ts';
-import type { LinkRankingJob, LinkRankingStatus } from '../link-ranking.ts';
+import { LinkRankingStore, rankingSettings, rankingModel, type rankLink, type Link } from '../../src/link-ranking.ts';
+import { runLinkRankingQueue } from '../../src/link-ranking-queue.ts';
+import { linkRankingRequestSchema, type LinkRankingRequest, type LinkRankingJob, type LinkRankingStatus } from '../link-ranking.ts';
 import { logAction } from './action-log.ts';
 
 // Process-local global queue. No schema initialization and no scraping/enrichment.
@@ -9,25 +10,30 @@ export function createLinkRankingService(options: { path?: string; apiKey?: stri
   let job: LinkRankingJob | null = null;
   const path = () => resolve(options.path ?? process.env.GTM_DATABASE_PATH ?? 'data/gtm-copilot.sqlite');
   const model = () => options.model ?? process.env.GTM_LINK_RANKING_MODEL ?? rankingModel;
-  const pending = () => {
+  const pending = (resultId?: number) => {
     if (!/^jev-\d+\.\d+\.\d+$/.test(model())) throw new Error('Use a pinned Jev model version.');
     const store = new LinkRankingStore(path(), true);
-    try { return store.pending(model()); } finally { store.close(); }
+    try {
+      if (resultId !== undefined && !store.links(resultId).length) throw new Error('Search result does not exist.');
+      return store.pending(model(), resultId);
+    } finally { store.close(); }
   };
-  const getStatus = (): LinkRankingStatus => {
+  const getStatus = (input: LinkRankingRequest = {}): LinkRankingStatus => {
+    const { resultId } = linkRankingRequestSchema.parse(input);
     if (job?.finishedAt && Date.now() - Date.parse(job.finishedAt) > 3600000) job = null;
-    if (job?.status === 'running') return { pendingCount: Math.max(0, job.total - job.processed), error: null, job: structuredClone(job) };
-    try { return { pendingCount: pending().length, error: null, job: job ? structuredClone(job) : null }; }
+    if (job?.status === 'running' && resultId === undefined) return { pendingCount: Math.max(0, job.total - job.processed), error: null, job: structuredClone(job) };
+    try { return { pendingCount: pending(resultId).length, error: null, job: job ? structuredClone(job) : null }; }
     catch { return { pendingCount: 0, error: 'Initialize the ranking schema with db:init and check database access and the pinned Jev model setting.', job: job ? structuredClone(job) : null }; }
   };
-  const start = (): { job: LinkRankingJob | null; error: string | null } => {
+  const start = (input: LinkRankingRequest = {}): { job: LinkRankingJob | null; error: string | null } => {
+    const { resultId } = linkRankingRequestSchema.parse(input);
     if (job?.status === 'running') return { job: null, error: 'Link ranking is already running.' };
     const apiKey = (options.apiKey ?? process.env.TYPESAFE_API_KEY)?.trim();
     if (!apiKey) return { job: null, error: 'Set TYPESAFE_API_KEY in the server environment and restart the server.' };
     let links: Link[];
-    try { links = pending(); }
-    catch { return { job: null, error: 'Initialize the ranking schema with db:init and check database access and the pinned Jev model setting.' }; }
-    if (!links.length) return { job: null, error: 'All saved results have current Jev rankings.' };
+    try { rankingSettings(); links = pending(resultId); }
+    catch { return { job: null, error: 'Check that the result exists, initialize the ranking schema with db:init, and check database access and the pinned Jev model setting.' }; }
+    if (!links.length) return { job: null, error: resultId === undefined ? 'All saved results have current Jev rankings.' : 'This result already has a current Jev ranking.' };
     const selectedModel = model();
     const dbPath = path();
     job = { id: randomUUID(), status: 'running', total: links.length, processed: 0, failed: 0, inputTokens: 0, finishedAt: null, error: null };
@@ -39,20 +45,11 @@ export function createLinkRankingService(options: { path?: string; apiKey?: stri
     let store: LinkRankingStore | undefined;
     try {
       store = new LinkRankingStore(dbPath);
-      for (const selected of links) {
-        const link = store.links(selected.id)[0];
-        if (!link || store.current(link, selectedModel)) { current.processed++; continue; }
-        try {
-          const response = await (options.rank ?? rankLink)(link, { apiKey, model: selectedModel, abortSignal: AbortSignal.timeout(60000) });
-          store.save(link, selectedModel, response, null);
-          current.inputTokens += response.usage.input_tokens ?? 0;
-          current.processed++;
-        } catch (error) {
-          store.save(link, selectedModel, null, error instanceof Error ? error.message : String(error));
-          current.failed++; current.processed++;
-          throw error; // Stop on provider errors; clicking again resumes only pending work.
-        }
-      }
+      await runLinkRankingQueue(links, store, { apiKey, model: selectedModel, rank: options.rank,
+        onProgress: (processed, failed, tokens) => {
+          current.processed += processed; current.failed += failed; current.inputTokens += tokens;
+        },
+      });
       current.status = 'complete';
     } catch (error) {
       current.status = 'failed';

@@ -4,12 +4,13 @@ import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../
 import type { AssessmentAttempt, AssessmentContext } from '../../src/result-assessment.ts';
 import { hasEnrichmentData } from '../../src/enrichment-data.ts';
 import { readResultsPage } from './results-page-store.ts';
+import { readLinkRankingDisplay } from './link-ranking-display.ts';
 import type { ResultsPageRequest } from '../results-page.ts';
 
 export interface Segment { id: number; name: string; description: string; created_at: string; country_count: number; query_count: number; result_count: number; unsearched_query_count: number }
 export interface Country { id: number; country_code: string }
 export interface Query { id: number; query: string; language: string; platform: string; rationale: string; created_at: string; country_code: string; segment_id: number; segment_name: string; result_count: number }
-export interface Result extends Partial<AssessmentSummary> { id: number; url: string; title: string; description: string; created_at: string; enriched?: boolean; audience_fit?: string | null }
+export interface Result extends Partial<AssessmentSummary> { id: number; url: string; title: string; description: string; created_at: string; enriched?: boolean; audience_fit?: string | null; jev_score?: number; jev_confidence?: number }
 export interface RankedResult extends Result { rank: number; collected_at: string }
 export interface ResultDiscovery { query_id: number; query: string; country_code: string; language: string; rank: number; collected_at: string }
 export interface SegmentResult extends Result { discoveries: ResultDiscovery[] }
@@ -43,10 +44,12 @@ export function openReadStore(path = process.env.GTM_DATABASE_PATH ?? resolve('d
     JOIN marketing_segments s ON s.id = c.marketing_segment_id WHERE qr.result_id = ? ORDER BY q.id`, id);
   const assessments = (id: number): AssessmentAttempt[] => all<Record<string, unknown>>(`SELECT a.* FROM search_result_assessments a
     JOIN search_result_enrichments e ON e.id = a.enrichment_id WHERE e.result_id = ? ORDER BY a.id DESC`, id).map(assessmentRow);
+  let linkRankings: ReturnType<typeof readLinkRankingDisplay> | undefined;
   const project = <T extends Result>(result: T): T & AssessmentSummary => {
     const row = get<Record<string, unknown>>('SELECT * FROM search_result_enrichments WHERE result_id = ? ORDER BY id DESC LIMIT 1', result.id);
     const enrichment = row ? { id: Number(row.id), status: String(row.status), data: row.data_json == null ? null : JSON.parse(String(row.data_json)), sources: JSON.parse(String(row.sources_json)) } : undefined;
-    return { ...result, ...assessmentSummary(enrichment, assessments(result.id)[0], context(result.id)) };
+    linkRankings ??= readLinkRankingDisplay(db);
+    return { ...result, ...linkRankings.get(result.id), ...assessmentSummary(enrichment, assessments(result.id)[0], context(result.id)) };
   };
   const hasSearchTracking = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_query_completions'").get();
   const unsearched = `NOT EXISTS (SELECT 1 FROM search_query_results qr WHERE qr.query_id = q.id)${hasSearchTracking ? ' AND NOT EXISTS (SELECT 1 FROM search_query_completions sc WHERE sc.query_id = q.id)' : ''}`;

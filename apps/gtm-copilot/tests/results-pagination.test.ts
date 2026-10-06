@@ -45,8 +45,18 @@ test('column sorting is global and unlinked results remain visible', () => {
   assert.equal(last.results.at(-1)?.id, 61);
 });
 
+test('enrichment filters preserve global counts and compose with discovery filters', () => {
+  const enriched = paginateResults(results, resultsPageSchema.parse({ enrichment: 'enriched', countries: ['US'] }));
+  assert.equal(enriched.matchedCount, 1);
+  assert.equal(enriched.results[0].id, 1);
+  assert.equal(enriched.totalCount, 61);
+  assert.equal(enriched.pendingCount, 61);
+  assert.equal(paginateResults(results, resultsPageSchema.parse({ enrichment: 'not_enriched' })).matchedCount, 60);
+  assert.equal(paginateResults(results, resultsPageSchema.parse({ enrichment: 'enriched', countries: ['DE'] })).matchedCount, 0);
+});
+
 test('page request rejects invalid or unbounded pagination', () => {
-  for (const request of [{ page: 0 }, { page: -1 }, { page: 1.5 }, { pageSize: 10000 }, { pageSize: 0 }, { sort: 'invalid' }]) {
+  for (const request of [{ page: 0 }, { page: -1 }, { page: 1.5 }, { pageSize: 10000 }, { pageSize: 0 }, { sort: 'invalid' }, { jevMin: -1 }, { jevMax: 101 }, { jevMin: 80, jevMax: 20 }, { ranking: 'invalid' }, { enrichment: 'invalid' }]) {
     assert.equal(resultsPageSchema.safeParse(request).success, false);
   }
   assert.equal(resultsPageSchema.parse({}).pageSize, 25);

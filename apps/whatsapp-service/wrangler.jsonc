@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "milo-whatsapp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "DISPATCH_ENABLED": "false" },
+  "queues": {
+    "producers": [{ "binding": "PROCESSING_QUEUE", "queue": "milo-whatsapp-processing" }],
+    "consumers": [{
+      "queue": "milo-whatsapp-processing",
+      "max_batch_size": 10,
+      "max_batch_timeout": 5,
+      "max_retries": 5,
+      "dead_letter_queue": "milo-whatsapp-processing-dlq"
+    }]
+  },
+  "triggers": { "crons": ["* * * * *"] }
+}

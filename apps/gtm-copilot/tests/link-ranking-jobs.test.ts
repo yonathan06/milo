@@ -43,6 +43,27 @@ test('web ranking skips current rows, locks overlapping starts and saves only pe
   } finally { release(); store.close(); f.close(); }
 });
 
+test('single-result ranking validates scope, processes only that result, and shares the global lock', async () => {
+  const f = fixture();
+  let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    const calls: number[] = [];
+    const service = createLinkRankingService({ path: f.path, apiKey: 'test', rank: async (link) => { calls.push(link.id); await gate; return response; } });
+    assert.throws(() => service.start({ resultId: -1 }));
+    assert.throws(() => service.getStatus({ resultId: 1.5 }));
+    assert.match(service.start({ resultId: 999 }).error!, /result exists/);
+    assert.equal(service.getStatus({ resultId: 2 }).pendingCount, 1);
+    assert.equal(service.start({ resultId: 2 }).job?.total, 1);
+    assert.match(service.start().error!, /already running/);
+    assert.match(service.start({ resultId: 1 }).error!, /already running/);
+    release(); await finished(service);
+    assert.deepEqual(calls, [2]);
+    assert.equal(service.getStatus({ resultId: 2 }).pendingCount, 0);
+    assert.equal(service.getStatus({ resultId: 1 }).pendingCount, 1);
+    assert.match(service.start({ resultId: 2 }).error!, /already has a current/);
+  } finally { release(); f.close(); }
+});
+
 test('provider failure stops queue and failed/unprocessed rows remain resumable', async () => {
   const f = fixture();
   try {

@@ -6,12 +6,16 @@ import type { AllResult } from './server/store';
 export const resultsPageSchema = z.object({
   page: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
   pageSize: z.union([z.literal(25), z.literal(50), z.literal(100)]).default(25),
-  sort: z.enum(['fit', 'posting', 'adminContact', 'result', 'countries', 'segments', 'collected']).default('fit'),
+  sort: z.enum(['fit', 'jev', 'posting', 'adminContact', 'result', 'countries', 'segments', 'collected']).default('fit'),
   descending: z.boolean().default(true),
   search: z.string().max(500).default(''),
   countries: z.array(z.string().max(10)).max(250).default([]),
   segments: z.array(z.number().int().positive()).max(1000).default([]),
-});
+  jevMin: z.number().min(0).max(100).default(0),
+  jevMax: z.number().min(0).max(100).default(100),
+  ranking: z.enum(['all', 'ranked', 'unranked']).default('all'),
+  enrichment: z.enum(['all', 'enriched', 'not_enriched']).default('all'),
+}).refine((request) => request.jevMin <= request.jevMax, { message: 'Minimum relevance must not exceed maximum relevance', path: ['jevMin'] });
 export type ResultsPageRequest = z.infer<typeof resultsPageSchema>;
 
 /** Rank and filter the complete scope on the server; serialize only the requested page. */
@@ -28,7 +32,10 @@ export function paginateResults(results: AllResult[], request: ResultsPageReques
     }
   };
   const filtered = results.filter((result) => matchesResult(result, request)).sort((a, b) => {
+    const jevCompared = a.jev_score == null ? (b.jev_score == null ? 0 : 1)
+      : b.jev_score == null ? -1 : (a.jev_score - b.jev_score) * (request.descending ? -1 : 1);
     const compared = request.sort === 'fit' ? compareMatchResults(a, b, request.descending)
+      : request.sort === 'jev' ? jevCompared
       : value(a).localeCompare(value(b), undefined, { numeric: true, sensitivity: 'base' }) * (request.descending ? -1 : 1);
     return compared || b.created_at.localeCompare(a.created_at) || b.id - a.id;
   });

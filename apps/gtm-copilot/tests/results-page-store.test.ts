@@ -3,7 +3,49 @@ import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { readResultsPage } from '../web/server/results-page-store.ts';
-import { resultsPageSchema } from '../web/results-page.ts';
+import { resultsPageSchema, paginateResults } from '../web/results-page.ts';
+import { linkFingerprint, rankingModel, rankingRubric } from '../src/link-ranking.ts';
+
+test('Jev scores sort globally, preserve zero, exclude outdated/failed rankings, and tolerate older schemas', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(readFileSync(new URL('../src/schema.sql', import.meta.url), 'utf8'));
+    db.function('has_enrichment_data', (_value) => 0);
+    for (let id = 1; id <= 30; id++) {
+      const link = { id, url: `https://example.com/${id}`, title: `Result ${id}`, description: '' };
+      db.prepare('INSERT INTO search_results(id,url,title,description) VALUES(?,?,?,?)').run(id, link.url, link.title, link.description);
+      if (id === 30) continue;
+      db.prepare(`INSERT INTO search_result_link_rankings(result_id,status,score,confidence,model_id,rubric_version,input_fingerprint)
+        VALUES(?,?,?,?,?,?,?)`).run(id, id === 28 ? 'failed' : 'complete', (id - 1) * 3, 0.8, rankingModel, rankingRubric,
+          id === 29 ? 'old-fingerprint' : linkFingerprint(link));
+    }
+    const descending = readResultsPage(db, resultsPageSchema.parse({ sort: 'jev' }));
+    assert.equal(descending.results[0].id, 27);
+    assert.equal(descending.results[0].jev_confidence, 0.8);
+    const second = readResultsPage(db, resultsPageSchema.parse({ sort: 'jev', page: 2 }));
+    assert.deepEqual(second.results.map((r) => r.id), [2, 1, 30, 29, 28]);
+    assert.equal(second.results[1].jev_score, 0);
+    assert.equal(second.results[2].jev_score, undefined);
+    const ascending = readResultsPage(db, resultsPageSchema.parse({ sort: 'jev', descending: false, pageSize: 100 }));
+    assert.equal(ascending.results[0].id, 1);
+    assert.deepEqual(ascending.results.slice(-3).map((r) => r.id), [30, 29, 28]);
+    assert.deepEqual(paginateResults(ascending.results, resultsPageSchema.parse({ sort: 'jev', page: 2 })), second);
+    for (const filters of [
+      { jevMin: 30, jevMax: 60 }, { jevMin: 0, jevMax: 0 }, { jevMin: 78, jevMax: 78 },
+      { ranking: 'ranked' }, { ranking: 'unranked' }, { ranking: 'unranked', jevMin: 1 },
+      { enrichment: 'enriched' }, { enrichment: 'not_enriched', jevMax: 30 },
+    ]) {
+      const request = resultsPageSchema.parse({ ...filters, sort: 'jev', page: 2 });
+      assert.deepEqual(readResultsPage(db, request), paginateResults(ascending.results, request));
+    }
+    assert.equal(readResultsPage(db, resultsPageSchema.parse({ jevMin: 30, jevMax: 60 })).matchedCount, 11);
+    assert.equal(readResultsPage(db, resultsPageSchema.parse({ jevMax: 0 })).results[0].id, 1, 'zero is a valid score');
+    assert.equal(readResultsPage(db, resultsPageSchema.parse({ ranking: 'unranked' })).matchedCount, 3, 'failed, outdated and missing scores are unranked');
+    db.exec('DROP TABLE search_result_link_rankings');
+    assert.equal(readResultsPage(db, resultsPageSchema.parse({ ranking: 'ranked' })).matchedCount, 0);
+    assert.ok(readResultsPage(db, resultsPageSchema.parse({ sort: 'jev' })).results.every((r) => r.jev_score === undefined));
+  } finally { db.close(); }
+});
 
 test('SQLite selects only the requested page with a fixed query count, including discovery filters', () => {
   const db = new DatabaseSync(':memory:');

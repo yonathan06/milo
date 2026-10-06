@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { startPlanningSchema, planningStatusSchema } from './planning';
 import { startSearchSchema, searchStatusSchema } from './search';
 import { enrichmentRequestSchema } from './enrichment';
+import { linkRankingRequestSchema } from './link-ranking';
 import { resultsPageSchema, type ResultsPageRequest } from './results-page';
 
 const idSchema = z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
@@ -119,18 +120,18 @@ export const enrichmentStatusOptions = () => queryOptions({
   refetchIntervalInBackground: true,
 });
 
-export const startResultLinkRanking = createServerFn({ method: 'POST' }).handler(async () => {
+export const startResultLinkRanking = createServerFn({ method: 'POST' }).validator(linkRankingRequestSchema).handler(async ({ data }) => {
   const { startLinkRanking } = await import('./server/link-ranking');
   const { runAction } = await import('./server/action-log');
-  try { return runAction('link-ranking', {}, () => startLinkRanking()); }
+  try { return runAction('link-ranking', { resultId: data.resultId }, () => startLinkRanking(data)); }
   catch { return { job: null, error: 'Could not start link ranking. Check server settings and initialize the ranking schema with db:init.' }; }
 });
-const getResultLinkRankingStatus = createServerFn({ method: 'GET' }).handler(async () => {
+const getResultLinkRankingStatus = createServerFn({ method: 'GET' }).validator(linkRankingRequestSchema).handler(async ({ data }) => {
   const { getLinkRankingStatus } = await import('./server/link-ranking');
-  return getLinkRankingStatus();
+  return getLinkRankingStatus(data);
 });
-export const linkRankingStatusOptions = () => queryOptions({
-  queryKey: ['link-ranking'], queryFn: () => getResultLinkRankingStatus(), staleTime: 0,
+export const linkRankingStatusOptions = (resultId?: number) => queryOptions({
+  queryKey: ['link-ranking', resultId ?? 'all'], queryFn: () => getResultLinkRankingStatus({ data: { resultId } }), staleTime: 0,
   refetchInterval: (query) => query.state.data?.job?.status === 'running' ? 2000 : false,
   refetchIntervalInBackground: true,
 });

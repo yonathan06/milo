@@ -3,6 +3,7 @@ import { createQuery } from '@tanstack/solid-query';
 import { For, Show } from 'solid-js';
 import { AssessmentDetails } from '../components/result-assessment';
 import { ResultEnrichment } from '../components/result-enrichment';
+import { ResultLinkRanking } from '../components/result-link-ranking';
 import { extractionDisplayStatus, partitionEnrichmentData } from '../enrichment-display';
 import { parseId, resultOptions } from '../data';
 import { Badge, Empty, ExternalLink, JsonData, PageHeading, Section } from '../components/ui';
@@ -23,6 +24,14 @@ function ResultDetail() {
     <Link to="/results" class="mb-6 inline-block text-sm text-teal-700 hover:underline">← All search results</Link>
     <PageHeading title={detail().result.title || detail().result.url}><Badge>Result #{detail().result.id}</Badge></PageHeading>
     <div class="rounded-xl border border-slate-200 bg-white p-5"><ExternalLink url={detail().result.url} /><p class="mt-2 text-xs text-slate-400">First recorded {detail().result.created_at}</p></div>
+    <Section title="Jev relevance">
+      <div class="flex flex-wrap items-center gap-3">
+        <Badge>{detail().result.jev_score == null ? 'Not ranked' : `${Math.round(detail().result.jev_score!)} / 100`}</Badge>
+        <Show when={detail().result.jev_confidence != null}><span class="text-sm text-slate-500">{Math.round(detail().result.jev_confidence! * 100)}% confidence</span></Show>
+      </div>
+      <p class="mt-3 text-xs text-slate-500">Preliminary outreach relevance based on the saved URL, title and search snippet—not verified facts or permission to contact. Outdated scores are hidden until reranked.</p>
+      <div class="mt-4"><ResultLinkRanking resultId={detail().result.id} /></div>
+    </Section>
     <div class="mt-5"><ResultEnrichment resultId={detail().result.id} results={[detail().result]} /></div>
     <AssessmentDetails result={detail().result} attempts={detail().assessments} />
     <Section title="Discovery context"><Show when={detail().queries.length} fallback={<p class="text-sm text-slate-500">No linked queries.</p>}><div class="space-y-3"><For each={detail().queries}>{(query) => <Link to="/queries/$queryId" params={{ queryId: String(query.id) }} class="block rounded-xl border border-slate-200 bg-white p-4 hover:border-teal-400"><p class="mb-2 text-xs text-slate-500">{query.segment_name} · {query.country_code} · {query.language} · {query.platform}</p><p class="text-sm font-medium break-words">{query.query}</p></Link>}</For></div></Show></Section>

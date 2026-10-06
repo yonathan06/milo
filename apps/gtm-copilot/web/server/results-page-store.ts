@@ -3,6 +3,8 @@ import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../
 import type { AssessmentContext } from '../../src/result-assessment.ts';
 import type { AllResult, AllResultDiscovery, Result } from './store.ts';
 import type { ResultsPageRequest } from '../results-page.ts';
+import { readLinkRankingDisplay } from './link-ranking-display.ts';
+import { matchesResultState } from '../result-filters.ts';
 
 /** Only enriched/assessed URLs need freshness and context checks. Batch these instead of
  * issuing three projection queries for every saved URL (including un-enriched URLs). */
@@ -49,6 +51,7 @@ function summaries(db: DatabaseSync) {
 
 export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
   const states = summaries(db);
+  const rankings = readLinkRankingDisplay(db);
   const params: SQLInputValue[] = [];
   const where: string[] = [];
   const discoveryFrom = `FROM search_query_results qr
@@ -69,6 +72,13 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
       coalesce((SELECT group_concat(discovery_query, ' ') FROM (SELECT q.query AS discovery_query ${discoveryFrom}
         WHERE qr.result_id = r.id ORDER BY qr.collected_at DESC, qr.rank, q.id)), '')) = 1`);
   }
+  if (request.jevMin > 0 || request.jevMax < 100 || request.ranking !== 'all' || request.enrichment !== 'all') {
+    db.function('matches_result_state', { deterministic: true }, (id) => matchesResultState({
+      jev_score: rankings.get(Number(id))?.jev_score,
+      enriched: states.get(Number(id))?.enriched ?? false,
+    }, request) ? 1 : 0);
+    where.push('matches_result_state(r.id) = 1');
+  }
   const filter = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const totalCount = Number(db.prepare('SELECT count(*) AS n FROM search_results').get()!.n);
   const matchedCount = where.length ? Number(db.prepare(`SELECT count(*) AS n FROM search_results r ${filter}`).get(...params)!.n) : totalCount;
@@ -76,7 +86,7 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
   const page = Math.min(request.page, pageCount);
   const direction = request.descending ? 'DESC' : 'ASC';
   const score = "json_extract(summary.value, '$.match_score')";
-  const textSort: Record<Exclude<ResultsPageRequest['sort'], 'fit'>, string> = {
+  const textSort: Record<Exclude<ResultsPageRequest['sort'], 'fit' | 'jev'>, string> = {
     posting: "coalesce(json_extract(summary.value, '$.posting_permission'), 'unknown')",
     adminContact: "coalesce(json_extract(summary.value, '$.admin_contact_permission'), 'unknown')",
     result: "coalesce(nullif(r.title, ''), r.url)",
@@ -86,9 +96,14 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
   };
   // SQLite cannot register JS collations. Natural text order uses a compact key for numeric runs.
   db.function('result_sort_key', { deterministic: true }, (value) => String(value ?? '').toLowerCase().replace(/\d+/g, (digits) => digits.padStart(20, '0')));
+  // A materialized JSON ranking join has no result-id index and scans thousands of
+  // rankings for every URL. Map lookups keep Jev ordering linear in result count.
+  db.function('jev_sort_score', { deterministic: true }, (id) => rankings.get(Number(id))?.jev_score ?? null);
   const order = request.sort === 'fit'
     ? `${score} IS NULL ASC, ${score} ${direction}, CASE WHEN ${score} IS NULL THEN coalesce(json_extract(summary.value, '$.enriched'), 0) ELSE 0 END DESC`
-    : `result_sort_key(${textSort[request.sort]}) ${direction}`;
+    : request.sort === 'jev'
+      ? `jev_sort_score(r.id) IS NULL ASC, jev_sort_score(r.id) ${direction}`
+      : `result_sort_key(${textSort[request.sort]}) ${direction}`;
   const rows = db.prepare(`WITH summary_rows AS MATERIALIZED (SELECT CAST(key AS INTEGER) AS result_id, value FROM json_each(?))
     SELECT r.* FROM search_results r LEFT JOIN summary_rows summary ON summary.result_id = r.id
     ${filter} ORDER BY ${order}, r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`)
@@ -97,7 +112,7 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
     qr.rank, qr.collected_at, s.id AS segment_id, s.name AS segment_name ${discoveryFrom}
     WHERE qr.result_id IN (SELECT value FROM json_each(?)) ORDER BY qr.collected_at DESC, qr.rank, q.id`)
     .all(JSON.stringify(rows.map((row) => row.id))) as unknown as (AllResultDiscovery & { result_id: number })[] : [];
-  const byId = new Map<number, AllResult>(rows.map((row) => [row.id, { ...row, ...(states.get(row.id) ?? {
+  const byId = new Map<number, AllResult>(rows.map((row) => [row.id, { ...row, ...rankings.get(row.id), ...(states.get(row.id) ?? {
     ...assessmentSummary(undefined, undefined, []), enriched: false, audience_fit: null,
   }), discoveries: [] }]));
   for (const { result_id, ...discovery } of discoveries) byId.get(result_id)!.discoveries.push(discovery);

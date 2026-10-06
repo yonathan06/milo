@@ -6,10 +6,17 @@
 WhatsApp channels and sender identities, ordered conversation history, acquisition
 attribution, outbound send units, and delivery callback evidence.
 
-**This is not a working WhatsApp integration yet.** Signature validation, webhook
-handlers, referral parsing, processing/send/analytics outboxes, queues, agents,
-provider sends, and callback reconciliation remain runtime work. Agent execution,
-memory, media ingestion, and the video pipeline are outside this schema change.
+**This is not a complete WhatsApp roundtrip yet.** `apps/whatsapp-service` now
+implements signature validation, webhook verification/normalization, transactional
+incoming acceptance and referral attribution, callback evidence persistence, and
+processing/acquisition outbox intents. A scheduled dispatcher publishes processing
+message IDs to Cloudflare Queues with recoverable claims; dispatch is disabled by
+default. The processing consumer now commits a unique pending `agent_runs` row
+before acknowledgment, with per-item retries and a configured DLQ. Ordered run
+coordination/execution is not implemented. Acquisition analytics dispatch, agent execution,
+send outboxes/provider sends, and callback reconciliation remain runtime work.
+See the [service README](../apps/whatsapp-service/README.md) for setup and tests.
+Memory, media ingestion, and the video pipeline remain outside this milestone.
 
 See [WhatsApp agent architecture](whatsapp-agent-architecture.md) and
 [outreach attribution RFC](outreach-attribution-rfc.md) for the wider requirements.
@@ -37,9 +44,10 @@ channel can establish verified phone ownership; client-submitted numbers cannot.
 
 ## End-to-end illustration
 
-Boxes marked `*` are required future runtime components, **not implemented here**.
-The two transaction boxes show the eventual integration boundary; the outbox
-records shown within them are deliberately not part of the current schema.
+Boxes marked `*` identify runtime components in the original foundation design;
+some are now partially implemented by `apps/whatsapp-service` (see Scope above).
+The incoming transaction now includes `outbox_intents` for processing and acquisition.
+The outgoing transaction and agent/send/reconciliation paths remain future work.
 
 ```text
                         INCOMING MESSAGE
@@ -313,7 +321,7 @@ users: Alice
 
 ## Transactions and consistency
 
-Future incoming ingestion must resolve identity only after signature validation.
+Incoming ingestion resolves identity only after signature validation.
 Within one short database transaction, lock the canonical user before the
 first-acquisition decision, deduplicate the incoming message, allocate a conversation
 sequence by row lock or atomic increment, persist the message, initialize eligible
@@ -324,9 +332,10 @@ sequence or reinitialize acquisition.
 
 Future outgoing completion must commit saved response content, send chunks, and send
 outbox intents together. Do not hold a transaction open during an LLM or provider
-HTTP call. Outbox and runtime tests are still needed before this becomes a reliable
-roundtrip. The integration tests demonstrate concurrency and rollback patterns,
-not a production ingestion handler.
+HTTP call. Service integration tests now exercise the real acceptance/dispatch functions,
+including concurrency, rollback, and publication interruption. Consumer handoff tests cover concurrent logical-run deduplication and user erasure.
+Agent execution, fenced response commits and outbound runtime tests are still needed before this becomes
+a reliable roundtrip. The original DB integration tests remain foundation patterns.
 
 Ownership checks and immutability/state guards are reviewed PostgreSQL triggers in
 `packages/db/drizzle/0003_noisy_joseph.sql`. **Drizzle snapshots do not represent
