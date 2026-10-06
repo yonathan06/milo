@@ -30,7 +30,8 @@ const getResult = createServerFn({ method: 'GET' }).validator(idSchema).handler(
 
 export const startBulkQueryPlanning = createServerFn({ method: 'POST' }).handler(async () => {
   const { startBulkPlanning } = await import('./server/planning');
-  try { return startBulkPlanning(); }
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('bulk-planning', {}, () => startBulkPlanning()); }
   catch { return { job: null, error: 'Could not start generation. Check that the database is initialized and writable.' }; }
 });
 const getBulkQueryPlanningStatus = createServerFn({ method: 'GET' }).handler(async () => {
@@ -45,7 +46,8 @@ export const bulkPlanningStatusOptions = () => queryOptions({
 
 export const startQueryPlanning = createServerFn({ method: 'POST' }).validator(startPlanningSchema).handler(async ({ data }) => {
   const { startPlanning } = await import('./server/planning');
-  try { return startPlanning(data); }
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('planning', { segmentId: data.segmentId }, () => startPlanning(data)); }
   catch { return { job: null, error: 'Could not start generation. Check that the database is initialized and writable.' }; }
 });
 const getQueryPlanningStatus = createServerFn({ method: 'GET' }).validator(planningStatusSchema).handler(async ({ data }) => {
@@ -60,9 +62,26 @@ export const planningStatusOptions = (segmentId: number) => queryOptions({
   refetchIntervalInBackground: true,
 });
 
+export const startBulkQuerySearch = createServerFn({ method: 'POST' }).handler(async () => {
+  const { startBulkSearch } = await import('./server/search');
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('bulk-search', {}, () => startBulkSearch()); }
+  catch { return { job: null, error: 'Could not start search. Run db:init to initialize search tracking and check database permissions.' }; }
+});
+const getBulkQuerySearchStatus = createServerFn({ method: 'GET' }).handler(async () => {
+  const { getBulkSearchStatus } = await import('./server/search');
+  return getBulkSearchStatus();
+});
+export const bulkSearchStatusOptions = () => queryOptions({
+  queryKey: ['bulk-query-search'], queryFn: () => getBulkQuerySearchStatus(), staleTime: 0,
+  refetchInterval: (query) => query.state.data?.status === 'running' ? 2000 : false,
+  refetchIntervalInBackground: true,
+});
+
 export const startQuerySearch = createServerFn({ method: 'POST' }).validator(startSearchSchema).handler(async ({ data }) => {
   const { startSearch } = await import('./server/search');
-  try { return startSearch(data); }
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('search', { segmentId: data.segmentId, queryCount: data.queryIds.length }, () => startSearch(data)); }
   catch { return { job: null, error: 'Could not start search. Check that the database is initialized and writable.' }; }
 });
 const getQuerySearchStatus = createServerFn({ method: 'GET' }).validator(searchStatusSchema).handler(async ({ data }) => {
@@ -79,12 +98,14 @@ export const searchStatusOptions = (segmentId: number) => queryOptions({
 
 export const startResultEnrichment = createServerFn({ method: 'POST' }).validator(enrichmentRequestSchema).handler(async ({ data }) => {
   const { startEnrichment } = await import('./server/enrichment');
-  try { return startEnrichment(data); }
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('enrichment', { segmentId: data.segmentId, resultId: data.resultId }, () => startEnrichment(data)); }
   catch { return { job: null, error: 'Could not start enrichment. Check that the database is initialized and writable.' }; }
 });
 export const startResultAssessment = createServerFn({ method: 'POST' }).validator(enrichmentRequestSchema).handler(async ({ data }) => {
   const { startEnrichment } = await import('./server/enrichment');
-  try { return startEnrichment({ ...data, mode: 'assessment' }); }
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('assessment', { segmentId: data.segmentId, resultId: data.resultId }, () => startEnrichment({ ...data, mode: 'assessment' })); }
   catch { return { job: null, error: 'Could not start assessment. Initialize the assessment schema with db:init and check database permissions.' }; }
 });
 const getResultEnrichmentStatus = createServerFn({ method: 'GET' }).handler(async () => {

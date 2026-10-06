@@ -4,7 +4,7 @@ import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../
 import type { AssessmentAttempt, AssessmentContext } from '../../src/result-assessment.ts';
 import { hasEnrichmentData } from '../../src/enrichment-data.ts';
 
-export interface Segment { id: number; name: string; description: string; created_at: string; country_count: number; query_count: number; result_count: number }
+export interface Segment { id: number; name: string; description: string; created_at: string; country_count: number; query_count: number; result_count: number; unsearched_query_count: number }
 export interface Country { id: number; country_code: string }
 export interface Query { id: number; query: string; language: string; platform: string; rationale: string; created_at: string; country_code: string; segment_id: number; segment_name: string; result_count: number }
 export interface Result extends Partial<AssessmentSummary> { id: number; url: string; title: string; description: string; created_at: string; enriched?: boolean; audience_fit?: string | null }
@@ -46,13 +46,22 @@ export function openReadStore(path = process.env.GTM_DATABASE_PATH ?? resolve('d
     const enrichment = row ? { id: Number(row.id), status: String(row.status), data: row.data_json == null ? null : JSON.parse(String(row.data_json)), sources: JSON.parse(String(row.sources_json)) } : undefined;
     return { ...result, ...assessmentSummary(enrichment, assessments(result.id)[0], context(result.id)) };
   };
+  const hasSearchTracking = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_query_completions'").get();
+  const unsearched = `NOT EXISTS (SELECT 1 FROM search_query_results qr WHERE qr.query_id = q.id)${hasSearchTracking ? ' AND NOT EXISTS (SELECT 1 FROM search_query_completions sc WHERE sc.query_id = q.id)' : ''}`;
   const segments = () => all<Segment>(`SELECT s.*,
     (SELECT count(*) FROM marketing_segment_countries c WHERE c.marketing_segment_id = s.id) AS country_count,
     (SELECT count(*) FROM marketing_segment_country_queries q JOIN marketing_segment_countries c ON c.id = q.marketing_segment_country_id WHERE c.marketing_segment_id = s.id) AS query_count,
+    (SELECT count(*) FROM marketing_segment_country_queries q JOIN marketing_segment_countries c ON c.id = q.marketing_segment_country_id WHERE c.marketing_segment_id = s.id AND ${unsearched}) AS unsearched_query_count,
     (SELECT count(DISTINCT qr.result_id) FROM search_query_results qr JOIN marketing_segment_country_queries q ON q.id = qr.query_id JOIN marketing_segment_countries c ON c.id = q.marketing_segment_country_id WHERE c.marketing_segment_id = s.id) AS result_count
     FROM marketing_segments s ORDER BY s.name COLLATE NOCASE, s.id`);
   return {
     segments,
+    unsearchedQueries() {
+      if (!hasSearchTracking) throw new Error('Initialize search tracking with db:init.');
+      return all<{ queryId: number; segmentId: number }>(`SELECT q.id AS queryId, c.marketing_segment_id AS segmentId
+        FROM marketing_segment_country_queries q JOIN marketing_segment_countries c ON c.id = q.marketing_segment_country_id
+        WHERE ${unsearched} ORDER BY c.marketing_segment_id, q.id`);
+    },
     results() {
       // Keep unlinked results too: deleting a query does not delete its saved URLs.
       const results = all<Result>(`SELECT r.*, ${enrichmentSelect} FROM search_results r ORDER BY created_at DESC, id DESC`);

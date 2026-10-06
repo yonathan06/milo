@@ -7,6 +7,19 @@ export const startSearchSchema = z.object({
 });
 export const searchStatusSchema = z.object({ segmentId: id });
 export type SearchRequest = z.output<typeof startSearchSchema>;
+export interface BulkSearchJob {
+  id: string;
+  status: 'running' | 'complete';
+  finishedAt: string | null;
+  queries: {
+    queryId: number;
+    segmentId: number;
+    status: 'queued' | 'running' | 'complete' | 'failed' | 'skipped';
+    resultCount: number;
+    error: string | null;
+  }[];
+}
+
 export interface SearchJob {
   id: string;
   segmentId: number;

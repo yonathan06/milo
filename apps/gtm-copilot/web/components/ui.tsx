@@ -10,7 +10,7 @@ export function Empty(props: { title: string; children?: JSX.Element }) {
   return <div class="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center"><h2 class="text-lg font-semibold">{props.title}</h2><p class="mt-2 text-sm text-slate-500">{props.children}</p></div>;
 }
 export function PageHeading(props: { title: string; children?: JSX.Element }) {
-  return <header class="mb-8"><h1 class="text-3xl font-semibold tracking-tight break-words sm:text-4xl">{props.title}</h1><Show when={props.children}><div class="mt-4 flex flex-wrap gap-2">{props.children}</div></Show></header>;
+  return <header class="mb-8"><h1 class="text-3xl font-semibold tracking-tight break-words sm:text-4xl">{props.title}</h1><div class="mt-4 flex flex-wrap gap-2">{props.children}</div></header>;
 }
 export function Section(props: { title: string; children: JSX.Element }) {
   return <section class="mt-8"><h2 class="mb-4 text-lg font-semibold">{props.title}</h2>{props.children}</section>;

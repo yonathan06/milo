@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS marketing_segment_country_queries (
   UNIQUE (marketing_segment_country_id, language, query)
 ) STRICT;
 
+-- Successful searches are recorded even when the provider returns no URLs.
+CREATE TABLE IF NOT EXISTS search_query_completions (
+  query_id INTEGER PRIMARY KEY REFERENCES marketing_segment_country_queries(id) ON DELETE CASCADE,
+  searched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+
 -- URLs are shared across queries; provenance belongs in the junction table.
 CREATE TABLE IF NOT EXISTS search_results (
   id INTEGER PRIMARY KEY,

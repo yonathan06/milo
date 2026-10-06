@@ -5,6 +5,7 @@ import { MarketingDatabase } from '../../src/database.ts';
 import { enrichAndAssess } from '../../src/enrichment-pipeline.ts';
 import { enrichmentRequestSchema, type EnrichmentJob, type EnrichmentRequest } from '../enrichment.ts';
 import { openReadStore } from './store.ts';
+import { logAction } from './action-log.ts';
 
 // Both actions use the same sequential queue/lock. Factory isolates job tests from the live server.
 export function createEnrichmentService(options: { path?: string; apiKey?: string; processWork?: typeof enrichAndAssess } = {}) {
@@ -35,6 +36,7 @@ export function createEnrichmentService(options: { path?: string; apiKey?: strin
     const verificationModel = process.env.GTM_VERIFICATION_MODEL ? provider(process.env.GTM_VERIFICATION_MODEL) : model;
     const assessmentModel = process.env.GTM_ASSESSMENT_MODEL ? provider(process.env.GTM_ASSESSMENT_MODEL) : verificationModel;
     job = { id: randomUUID(), status: 'running', finishedAt: null, results: pending.map((result) => ({ resultId: result.id, status: 'queued', phase: null, error: null })) };
+    logAction('enrichment.started', { jobId: job.id, mode: request.mode ?? 'enrichment', resultCount: pending.length });
     void run(job, path(), { model, verificationModel, assessmentModel, assessmentOnly: request.mode === 'assessment', force: request.force });
     return { job: structuredClone(job), error: null };
   };
@@ -43,17 +45,25 @@ export function createEnrichmentService(options: { path?: string; apiKey?: strin
       for (const progress of current.results) {
         let db: MarketingDatabase | undefined;
         progress.status = 'running';
+        const context = { jobId: current.id, resultId: progress.resultId };
+        logAction('enrichment.result.started', context);
         try {
           db = new MarketingDatabase(dbPath, { initializeSchema: false });
-          const result = await (options.processWork ?? enrichAndAssess)(progress.resultId, db, { ...settings, abortSignal: AbortSignal.timeout(720000), onPhase: (phase) => { progress.phase = phase; } });
+          const result = await (options.processWork ?? enrichAndAssess)(progress.resultId, db, { ...settings, abortSignal: AbortSignal.timeout(720000), onPhase: (phase) => { progress.phase = phase; logAction('enrichment.result.phase', { ...context, phase }); } });
           progress.status = result.status;
           if (result.status === 'failed' || result.status === 'blocked') progress.error = progress.phase === 'assessment' ? 'Assessment failed. Enrichment is preserved; retry assessment without scraping.' : 'Collection/extraction failed or was blocked. Review result details before retrying.';
-        } catch {
+          logAction(`enrichment.result.${result.status}`, { ...context, phase: progress.phase },
+            result.status === 'failed' || result.status === 'blocked' ? (result.assessment?.error ?? result.enrichment?.error ?? progress.error) : undefined);
+        } catch (error) {
+          logAction('enrichment.result.failed', { ...context, phase: progress.phase }, error);
           progress.status = 'failed';
           progress.error = 'Could not process this result. Check initialized schema, provider settings, and latest enrichment.';
         } finally { db?.close(); }
       }
-    } finally { current.status = 'complete'; current.finishedAt = new Date().toISOString(); }
+    } finally {
+      current.status = 'complete'; current.finishedAt = new Date().toISOString();
+      logAction('enrichment.finished', { jobId: current.id, failedCount: current.results.filter((result) => result.status === 'failed' || result.status === 'blocked').length });
+    }
   }
   return { start, getStatus };
 }

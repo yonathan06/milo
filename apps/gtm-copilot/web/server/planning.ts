@@ -7,6 +7,7 @@ import { planMarketingSegmentCountryQueries } from '../../src/country-query-plan
 import { countryLanguages, type PlanningJob, type PlanningRequest } from '../planning';
 import { withReadStore } from './store';
 import { createBulkPlanningService } from './bulk-planning';
+import { logAction } from './action-log.ts';
 
 // Single-process local workspace queue. Only one active job per segment, at most three globally.
 // No keys, model instances, or mutable database handles are serialized to the browser.
@@ -65,6 +66,7 @@ export function startPlanning(request: PlanningRequest): { job: PlanningJob | nu
   // Always pass a cwd-relative resolved path: database.ts's import.meta.url default is CLI-specific.
   const path = resolve(process.env.GTM_DATABASE_PATH ?? 'data/gtm-copilot.sqlite');
   jobs.set(job.segmentId, job);
+  logAction('planning.started', { jobId: job.id, segmentId: job.segmentId, countryCount: job.countries.length });
   // Return immediately; polling avoids browser/proxy timeouts on multi-country generation.
   void runJob(job, path, model);
   return { job: structuredClone(job), error: null };
@@ -74,6 +76,8 @@ async function runJob(job: PlanningJob, path: string, model: Parameters<typeof p
   try {
     for (const country of job.countries) {
       country.status = 'running';
+      const context = { jobId: job.id, segmentId: job.segmentId, countryId: country.countryId, countryCode: country.countryCode };
+      logAction('planning.country.started', context);
       let db: MarketingDatabase | undefined;
       const abortSignal = AbortSignal.timeout(120_000);
       try {
@@ -87,13 +91,15 @@ async function runJob(job: PlanningJob, path: string, model: Parameters<typeof p
         }, { database: db, model, abortSignal });
         country.savedCount = plan.savedQueries.length;
         country.status = 'complete';
+        logAction('planning.country.complete', { ...context, savedCount: country.savedCount });
       } catch (error) {
         country.status = 'failed';
         country.error = abortSignal.aborted ? 'Generation timed out after two minutes. Retry this country.' : publicPlanningError(error);
-        console.error(`Query planning failed for segment ${job.segmentId}, country ${country.countryCode}: ${error instanceof Error ? error.name : 'Unknown error'}`);
+        logAction('planning.country.failed', { ...context, timedOut: abortSignal.aborted }, error);
       } finally { db?.close(); }
     }
-  } catch {
+  } catch (error) {
+    logAction('planning.failed', { jobId: job.id, segmentId: job.segmentId }, error);
     for (const country of job.countries) {
       if (country.status === 'queued' || country.status === 'running') {
         country.status = 'failed';
@@ -103,6 +109,7 @@ async function runJob(job: PlanningJob, path: string, model: Parameters<typeof p
   } finally {
     job.status = 'complete';
     job.finishedAt = new Date().toISOString();
+    logAction('planning.finished', { jobId: job.id, segmentId: job.segmentId, failedCount: job.countries.filter((country) => country.status === 'failed').length });
   }
 }
 function publicPlanningError(error: unknown): string {

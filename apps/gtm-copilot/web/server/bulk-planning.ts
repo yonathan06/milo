@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { BulkPlanningJob, PlanningJob, PlanningRequest } from '../planning.ts';
+import { logAction } from './action-log.ts';
 
 interface Dependencies {
   candidates: () => { id: number; name: string; query_count: number }[];
@@ -27,6 +28,7 @@ export function createBulkPlanningService(deps: Dependencies) {
       id: randomUUID(), status: 'running', startedAt: new Date().toISOString(), finishedAt: null,
       segments: segments.map((segment) => ({ segmentId: segment.id, name: segment.name, status: 'queued', savedCount: 0, error: null })),
     };
+    logAction('bulk-planning.started', { jobId: job.id, segmentCount: job.segments.length });
     void run(job);
     return { job: structuredClone(job), error: null };
   }
@@ -57,6 +59,7 @@ export function createBulkPlanningService(deps: Dependencies) {
           segment.status = failures.length ? 'failed' : 'complete';
           segment.error = failures.length ? failures.map((country) => `${country.countryCode}: ${country.error}`).join(' · ') : null;
         } catch (error) {
+          logAction('bulk-planning.segment.failed', { jobId: batch.id, segmentId: segment.segmentId }, error);
           segment.status = 'failed';
           segment.error = error instanceof Error ? error.message : 'Could not plan queries for this segment.';
         }
@@ -64,6 +67,7 @@ export function createBulkPlanningService(deps: Dependencies) {
     } finally {
       batch.status = 'complete';
       batch.finishedAt = new Date().toISOString();
+      logAction('bulk-planning.finished', { jobId: batch.id, failedCount: batch.segments.filter((segment) => segment.status === 'failed').length });
     }
   }
   return { start, getStatus };

@@ -178,6 +178,11 @@ export class MarketingDatabase {
       .all(countryId) as unknown as MarketingSegmentCountryQuery[];
   }
 
+  hasQueryBeenSearched(queryId: number): boolean {
+    return !!this.db.prepare(`SELECT 1 FROM search_query_completions WHERE query_id = ?
+      UNION ALL SELECT 1 FROM search_query_results WHERE query_id = ? LIMIT 1`).get(queryId, queryId);
+  }
+
   /** Append provenance atomically. Re-runs update metadata/rank without duplicating URLs or links. */
   saveSearchResults(queryId: number, inputs: SearchResultInput[]): StoredSearchResult[] {
     if (!this.getQuery(queryId)) throw new Error(`Search query ${queryId} does not exist.`);
@@ -197,6 +202,8 @@ export class MarketingDatabase {
         const row = upsertResult.get(result.url, result.title, result.description) as { id: number };
         upsertLink.run(queryId, row.id, result.rank);
       }
+      this.db.prepare(`INSERT INTO search_query_completions (query_id) VALUES (?)
+        ON CONFLICT (query_id) DO UPDATE SET searched_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).run(queryId);
       this.db.exec('COMMIT;');
     } catch (error) {
       this.db.exec('ROLLBACK;');

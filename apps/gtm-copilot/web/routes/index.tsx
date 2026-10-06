@@ -4,6 +4,7 @@ import { createMemo, createSignal, For, Show } from 'solid-js';
 import { segmentsOptions } from '../data';
 import { Badge, Empty, PageHeading } from '../components/ui';
 import { BulkQueryGenerator } from '../components/bulk-query-generator';
+import { BulkQuerySearch } from '../components/bulk-query-search';
 
 export const Route = createFileRoute('/')({
   loader: ({ context }) => context.queryClient.ensureQueryData(segmentsOptions()),
@@ -17,6 +18,7 @@ function Segments() {
     <PageHeading title="Marketing segments"><Badge>{data.data?.length ?? 0} segments</Badge><Badge>SQLite · live local data</Badge></PageHeading>
     <Show when={data.data?.length} fallback={<Empty title="No segments yet">Create segments with the existing CLI. They will appear here without changing the database from the app.</Empty>}>
       <BulkQueryGenerator missingCount={(data.data ?? []).filter((segment) => segment.query_count === 0).length} />
+      <BulkQuerySearch unsearchedCount={(data.data ?? []).reduce((total, segment) => total + segment.unsearched_query_count, 0)} />
       <label class="mb-6 block"><span class="mb-2 block text-sm font-medium text-slate-600">Find a segment</span><input type="search" value={search()} onInput={(event) => setSearch(event.currentTarget.value)} placeholder="Search name or description…" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm sm:max-w-md" /></label>
       <Show when={filtered().length} fallback={<Empty title="No matching segments">Try a different search.</Empty>}>
         <div class="grid gap-5 md:grid-cols-2"><For each={filtered()}>{(segment) => <Link to="/segments/$segmentId" params={{ segmentId: String(segment.id) }} class="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-teal-400 hover:shadow-sm">
