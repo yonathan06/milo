@@ -43,6 +43,7 @@ export function createAuth(db: Database | LocalDatabase, config: AuthConfig) {
       additionalFields: {
         phoneNumber: { type: "string", required: false, input: false, returned: false },
         phoneNumberVerified: { type: "boolean", required: false, input: false, returned: false },
+        acquisitionOrigin: { type: "string", required: false, input: false, returned: false },
         acquisitionRef: { type: "string", required: false, input: false, returned: false },
         acquisitionInitializedAt: { type: "date", required: false, input: false, returned: false },
         acquisitionMessageId: { type: "string", required: false, input: false, returned: false },

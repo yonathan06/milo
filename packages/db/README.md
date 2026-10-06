@@ -13,7 +13,12 @@ package. Use a TypeScript bundler (Workers) or Node 24+ for scripts. Add
   tables. No web sign-in method or plugins enabled yet; automatic account linking
   is disabled. Do not treat this as a ready-to-launch authentication service.
 - Canonical user acquisition fields from `docs/outreach-attribution-rfc.md`, marked
-  server-owned and excluded from auth responses.
+  server-owned and excluded from auth responses; initialized attribution is immutable.
+- WhatsApp channels, sender identities, conversations, canonical messages, outbound
+  send chunks, and delivery callback evidence with Drizzle relationships and SQL guards.
+  See [WhatsApp message flow](../../docs/whatsapp-message-flow.md) for the entity model
+  and ASCII end-to-end chart. Webhook handlers, agents, queues/outboxes, provider sends,
+  and callback reconciliation are not implemented by these tables.
 
 Neon is the **candidate** in `docs/whatsapp-database-qualification.md`, not an
 approved or production-qualified provider. This transport requires a Neon
@@ -58,7 +63,11 @@ connections and a local Workers TCP proxy are not configured here.
 
 Migrations run explicitly, never during request handling. Generation requires no
 connection or credentials. Keep migration SQL, snapshots and journal committed.
-Only one deployment job should apply migrations at a time. After adding an auth
+Only one deployment job should apply migrations at a time. Migration `0003` classifies
+existing uninitialized users as preexisting and stops if legacy initialized attribution
+needs an explicit evidence import. Its reviewed SQL also contains integrity triggers
+and a deferred acquisition-message FK that Drizzle snapshots do not fully represent;
+preserve these guards in future migrations. After adding an auth
 plugin or updating Better Auth, compare its required schema with ours and generate
 and review a new Drizzle migration (do not replace the application schema blindly).
 
@@ -155,7 +164,11 @@ pnpm --filter @video-editor-agent/db test:integration
 
 It exercises Better Auth user/session persistence, transaction rollback, verified
 phone-only provisioning, concurrent deduplication, optional email persistence and
-acquisition preservation. It cleans up its test users. It is skipped without configuration. Local PostgreSQL tests
+acquisition preservation. Messaging tests additionally cover channel/ownership checks,
+ordered deduplication, concurrent acceptance, acquisition immutability and rollback,
+outbound chunks, callback reconciliation, delivery non-regression, migration fixtures,
+and cascading user erasure. Tests clean up their fixtures and are skipped without
+configuration. Local PostgreSQL tests
 do not qualify the Neon WebSocket transport or deployed Workers behavior. Deployed Workers
 transport, concurrent locks, production auth flows and backup/restore still require
 qualification; no resources are provisioned by this package.

@@ -12,8 +12,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/db.test.ts tests/local.test.ts",
-    "test:integration": "node --env-file-if-exists=.env --test tests/integration.test.ts",
+    "test": "node --test tests/db.test.ts tests/local.test.ts tests/messaging.test.ts",
+    "test:integration": "node --env-file-if-exists=.env --test tests/integration.test.ts tests/messaging.integration.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts"
   },

@@ -43,7 +43,9 @@ test("auth rejects unsafe configuration and keeps acquisition server-owned", asy
 });
 
 test("schema provides core auth keys, cascades, and acquisition consistency", () => {
-  assert.deepEqual(Object.keys(schema).sort(), ["account", "session", "user", "verification"]);
+  for (const key of ["account", "session", "user", "verification", "whatsappChannel", "whatsappIdentity", "conversation", "message", "outboundDelivery", "deliveryEvent"]) {
+    assert.ok(key in schema, `Missing schema export: ${key}`);
+  }
   for (const table of [schema.account, schema.session]) {
     assert.equal(getTableConfig(table).foreignKeys[0]?.onDelete, "cascade");
   }
@@ -53,6 +55,8 @@ test("schema provides core auth keys, cascades, and acquisition consistency", ()
   assert.equal("contactEmail" in schema.user, false);
   assert.equal("contactEmailVerified" in schema.user, false);
   assert.equal(schema.user.phoneNumber.isUnique, true);
+  assert.equal(schema.user.acquisitionOrigin.notNull, false);
+  assert.equal(getTableConfig(schema.user).foreignKeys[0]?.reference().foreignTable, schema.message);
 });
 
 test("WhatsApp numbers normalize deterministically without guessing country codes", () => {
