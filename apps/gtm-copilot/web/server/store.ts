@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { assessmentRow, assessmentSummary, type AssessmentSummary } from '../../src/assessment-state.ts';
 import type { AssessmentAttempt, AssessmentContext } from '../../src/result-assessment.ts';
 import { hasEnrichmentData } from '../../src/enrichment-data.ts';
+import { readResultsPage } from './results-page-store.ts';
+import type { ResultsPageRequest } from '../results-page.ts';
 
 export interface Segment { id: number; name: string; description: string; created_at: string; country_count: number; query_count: number; result_count: number; unsearched_query_count: number }
 export interface Country { id: number; country_code: string }
@@ -61,6 +63,9 @@ export function openReadStore(path = process.env.GTM_DATABASE_PATH ?? resolve('d
       return all<{ queryId: number; segmentId: number }>(`SELECT q.id AS queryId, c.marketing_segment_id AS segmentId
         FROM marketing_segment_country_queries q JOIN marketing_segment_countries c ON c.id = q.marketing_segment_country_id
         WHERE ${unsearched} ORDER BY c.marketing_segment_id, q.id`);
+    },
+    resultsPage(request: ResultsPageRequest) {
+      return readResultsPage(db, request);
     },
     results() {
       // Keep unlinked results too: deleting a query does not delete its saved URLs.

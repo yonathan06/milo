@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { startPlanningSchema, planningStatusSchema } from './planning';
 import { startSearchSchema, searchStatusSchema } from './search';
 import { enrichmentRequestSchema } from './enrichment';
+import { resultsPageSchema, type ResultsPageRequest } from './results-page';
 
 const idSchema = z.object({ id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 
@@ -19,9 +20,9 @@ const getQuery = createServerFn({ method: 'GET' }).validator(idSchema).handler(a
   const { withReadStore } = await import('./server/store');
   return withReadStore((store) => store.query(data.id));
 });
-const getResults = createServerFn({ method: 'GET' }).handler(async () => {
+const getResults = createServerFn({ method: 'GET' }).validator(resultsPageSchema).handler(async ({ data }) => {
   const { withReadStore } = await import('./server/store');
-  return withReadStore((store) => store.results());
+  return withReadStore((store) => store.resultsPage(data));
 });
 const getResult = createServerFn({ method: 'GET' }).validator(idSchema).handler(async ({ data }) => {
   const { withReadStore } = await import('./server/store');
@@ -118,7 +119,27 @@ export const enrichmentStatusOptions = () => queryOptions({
   refetchIntervalInBackground: true,
 });
 
-export const resultsOptions = () => queryOptions({ queryKey: ['results'], queryFn: () => getResults() });
+export const startResultLinkRanking = createServerFn({ method: 'POST' }).handler(async () => {
+  const { startLinkRanking } = await import('./server/link-ranking');
+  const { runAction } = await import('./server/action-log');
+  try { return runAction('link-ranking', {}, () => startLinkRanking()); }
+  catch { return { job: null, error: 'Could not start link ranking. Check server settings and initialize the ranking schema with db:init.' }; }
+});
+const getResultLinkRankingStatus = createServerFn({ method: 'GET' }).handler(async () => {
+  const { getLinkRankingStatus } = await import('./server/link-ranking');
+  return getLinkRankingStatus();
+});
+export const linkRankingStatusOptions = () => queryOptions({
+  queryKey: ['link-ranking'], queryFn: () => getResultLinkRankingStatus(), staleTime: 0,
+  refetchInterval: (query) => query.state.data?.job?.status === 'running' ? 2000 : false,
+  refetchIntervalInBackground: true,
+});
+
+export const resultsOptions = (request: ResultsPageRequest = resultsPageSchema.parse({})) => queryOptions({
+  queryKey: ['results', request], queryFn: () => getResults({ data: request }),
+  placeholderData: (previous) => previous,
+  staleTime: 30_000,
+});
 export const segmentsOptions = () => queryOptions({ queryKey: ['segments'], queryFn: () => getSegments() });
 export const segmentOptions = (id: number) => queryOptions({ queryKey: ['segment', id], queryFn: () => getSegment({ data: { id } }) });
 export const queryDetailOptions = (id: number) => queryOptions({ queryKey: ['query', id], queryFn: () => getQuery({ data: { id } }) });

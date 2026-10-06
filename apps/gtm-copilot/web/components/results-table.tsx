@@ -3,6 +3,7 @@ import { createEffect, For, on, Show } from 'solid-js';
 import { sortFn_alphanumeric, sortFn_text, sortFn_basic, createColumnHelper, createTable, createPaginatedRowModel, createSortedRowModel, rowPaginationFeature, rowSortingFeature, tableFeatures } from '@tanstack/solid-table';
 import { matchLabel, permissionLabel } from '../assessment-display';
 import type { AllResultDiscovery, SegmentResult } from '../server/store';
+import type { ResultsPageRequest } from '../results-page';
 import { Badge, ExternalLink } from './ui';
 
 const features = tableFeatures({ rowSortingFeature, rowPaginationFeature, sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text, basic: sortFn_basic }, sortedRowModel: createSortedRowModel(), paginatedRowModel: createPaginatedRowModel() });
@@ -41,12 +42,14 @@ const columns = helper.columns([
   }),
 ]);
 
-export function ResultsTable(props: { results: SegmentResult[]; context: 'segments' | 'queries'; caption: string }) {
+export function ResultsTable(props: { results: SegmentResult[]; context: 'segments' | 'queries'; caption: string; serverPaginated?: boolean; sort?: ResultsPageRequest['sort']; descending?: boolean; onSort?: (column: ResultsPageRequest['sort']) => void }) {
   const table = createTable({
     features,
     get columns() { return columns.filter((column) => column.id !== (props.context === 'segments' ? 'queries' : 'segments')); },
     get data() { return props.results; },
     getRowId: (row) => String(row.id),
+    get manualPagination() { return !!props.serverPaginated; },
+    get manualSorting() { return !!props.serverPaginated; },
     initialState: { pagination: { pageIndex: 0, pageSize: 25 }, sorting: [{ id: 'fit', desc: true }] },
   });
   createEffect(on(() => props.results, () => table.firstPage(), { defer: true }));
@@ -56,13 +59,13 @@ export function ResultsTable(props: { results: SegmentResult[]; context: 'segmen
     <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table class="w-full min-w-[48rem] text-left text-sm">
         <caption class="sr-only">{props.caption}</caption>
-        <thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-600"><For each={table.getHeaderGroups()}>{(group) => <tr><For each={group.headers}>{(header) => <th scope="col" class="px-5 py-3" aria-sort={header.column.getIsSorted() === 'asc' ? 'ascending' : header.column.getIsSorted() === 'desc' ? 'descending' : 'none'}><button type="button" class="flex items-center gap-2" onClick={header.column.getToggleSortingHandler()}><table.FlexRender header={header} /><span aria-hidden="true">{header.column.getIsSorted() === 'asc' ? '↑' : header.column.getIsSorted() === 'desc' ? '↓' : '↕'}</span></button></th>}</For></tr>}</For></thead>
+        <thead class="border-b border-slate-200 bg-slate-50 text-xs text-slate-600"><For each={table.getHeaderGroups()}>{(group) => <tr><For each={group.headers}>{(header) => <th scope="col" class="px-5 py-3" aria-sort={props.serverPaginated ? (props.sort === header.column.id ? (props.descending ? 'descending' : 'ascending') : 'none') : header.column.getIsSorted() === 'asc' ? 'ascending' : header.column.getIsSorted() === 'desc' ? 'descending' : 'none'}><button type="button" class="flex items-center gap-2" onClick={props.serverPaginated ? () => props.onSort?.(header.column.id as ResultsPageRequest['sort']) : header.column.getToggleSortingHandler()}><table.FlexRender header={header} /><span aria-hidden="true">{props.serverPaginated ? (props.sort === header.column.id ? (props.descending ? '↓' : '↑') : '↕') : header.column.getIsSorted() === 'asc' ? '↑' : header.column.getIsSorted() === 'desc' ? '↓' : '↕'}</span></button></th>}</For></tr>}</For></thead>
         <tbody class="divide-y divide-slate-100"><For each={table.getRowModel().rows}>{(row) => <tr class="align-top hover:bg-slate-50"><For each={row.getAllCells()}>{(cell) => <td class="px-5 py-4"><table.FlexRender cell={cell} /></td>}</For></tr>}</For></tbody>
       </table>
     </div>
-    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+    <Show when={!props.serverPaginated}><div class="mt-4 flex flex-wrap items-center justify-between gap-3">
       <label class="flex items-center gap-2 text-sm text-slate-600">Rows per page<select class="rounded-lg border border-slate-200 bg-white px-3 py-2" value={table.atoms.pagination.get().pageSize} onChange={(event) => { table.setPageSize(Number(event.currentTarget.value)); table.firstPage(); }}><For each={[25, 50, 100]}>{(size) => <option value={size}>{size}</option>}</For></select></label>
       <div class="flex items-center gap-3"><button type="button" class={buttonClass} disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>Previous</button><span class="text-sm text-slate-500">Page {table.atoms.pagination.get().pageIndex + 1} of {table.getPageCount()}</span><button type="button" class={buttonClass} disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>Next</button></div>
-    </div>
+    </div></Show>
   </>;
 }

@@ -3,13 +3,13 @@ import { createEffect, createSignal, Show } from 'solid-js';
 import { enrichmentStatusOptions, startResultAssessment, startResultEnrichment } from '../data';
 import type { Result } from '../server/store';
 
-export function ResultEnrichment(props: { segmentId?: number; resultId?: number; results: Result[] }) {
+export function ResultEnrichment(props: { segmentId?: number; resultId?: number; results: Result[]; counts?: { pending: number; pendingAssessments: number } }) {
   const client = useQueryClient();
   const status = createQuery(enrichmentStatusOptions);
   const [message, setMessage] = createSignal('');
   const scoped = () => props.results.filter((result) => props.resultId === undefined || result.id === props.resultId);
-  const pending = () => scoped().filter((result) => result.assessment_status !== 'complete').length;
-  const pendingAssessments = () => scoped().filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length;
+  const pending = () => props.counts?.pending ?? scoped().filter((result) => result.assessment_status !== 'complete').length;
+  const pendingAssessments = () => props.counts?.pendingAssessments ?? scoped().filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length;
   const canReassess = () => props.resultId !== undefined && scoped().some((result) => result.assessment_ready && result.assessment_status === 'complete');
   const mutation = createMutation(() => ({
     mutationFn: (request: { mode: 'enrichment' | 'assessment'; force?: boolean }) => {

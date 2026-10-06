@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openReadStore, type AllResult } from '../web/server/store.ts';
 import { matchesResult } from '../web/result-filters.ts';
+import { paginateResults, resultsPageSchema } from '../web/results-page.ts';
 import { audienceFitScore, enrichmentRequestSchema, rankingSortValue, rankingLabel } from '../web/enrichment.ts';
 
 const result: AllResult = {
@@ -85,6 +86,10 @@ test('store returns one row per URL, all discovery associations, and unlinked re
     try {
       const results = store.results();
       assert.equal(results.length, 3);
+      for (const request of [{}, { page: 99 }, { search: ' BUSINESS ' }, { search: '%' }, { countries: ['US'], segments: [2] }, { countries: ['DE'], segments: [2] }, { sort: 'result', descending: false }, { sort: 'countries' }, { sort: 'segments' }, { sort: 'collected' }, { sort: 'posting' }, { sort: 'adminContact' }]) {
+        const parsed = resultsPageSchema.parse(request);
+        assert.deepEqual(store.resultsPage(parsed), paginateResults(results.map((result) => ({ ...result, enriched: Boolean(result.enriched) })), parsed), JSON.stringify(request));
+      }
       assert.equal(Boolean(results.find((item) => item.id === 3)!.enriched), false, 'legacy empty partial attempts stay retryable');
       assert.equal(results.find((item) => item.id === 3)!.audience_fit, null);
       const shared = results.find((item) => item.id === 1)!;

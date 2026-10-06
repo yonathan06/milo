@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { openReadStore } from '../web/server/store.ts';
+import { resultsPageSchema } from '../web/results-page.ts';
 
 const now = Date.now();
 export const sources = [{ url: 'https://example.com/community', text: 'Event video editors. Commercial posting allowed. Contact admins for commercial offers. Members: 1000.', fetchedAt: new Date(now).toISOString() }];
@@ -106,14 +107,30 @@ test('persistence, retry, migration, currentness, stale/failure projection, and 
     const zero = structuredClone(output); zero.components.audience.score = 0; zero.components.eventVideo.score = 0;
     db.saveAssessment({ ...saved, assessment: finish(zero) });
     const read = openReadStore(path);
-    try { assert.equal(read.results()[0].match_score, 0); assert.equal(read.result(1)!.assessments.length, 3); } finally { read.close(); }
+    try {
+      assert.equal(read.results()[0].match_score, 0);
+      assert.equal(read.result(1)!.assessments.length, 3);
+      const page = read.resultsPage(resultsPageSchema.parse({}));
+      assert.equal(page.results[0].match_score, 0);
+      assert.equal(page.results[0].assessment_status, 'complete');
+      assert.equal(page.pendingCount, 0);
+      assert.equal(page.pendingAssessmentCount, 0);
+    } finally { read.close(); }
     assert.equal(assessmentSummary(enrichment, saved, context, now).assessment_status, 'stale');
     assert.equal(assessmentSummary({ ...enrichment, sources: [] }, saved, [], now).posting_permission, 'unknown');
     db.saveAssessment({ ...failed, error: 'retry failed' });
     assert.equal(db.getAssessmentSummary(1).assessment_status, 'failed');
     assert.equal(db.getAssessmentSummary(1).posting_permission, 'unknown');
     const failedRead = openReadStore(path);
-    try { assert.equal(failedRead.results()[0].match_score, null); assert.equal(failedRead.results()[0].assessment_status, 'failed'); } finally { failedRead.close(); }
+    try {
+      assert.equal(failedRead.results()[0].match_score, null);
+      assert.equal(failedRead.results()[0].assessment_status, 'failed');
+      const page = failedRead.resultsPage(resultsPageSchema.parse({}));
+      assert.equal(page.results[0].assessment_status, 'failed');
+      assert.equal(page.results[0].match_score, null);
+      assert.equal(page.pendingCount, 1);
+      assert.equal(page.pendingAssessmentCount, 1);
+    } finally { failedRead.close(); }
     db.saveEnrichment({ resultId: 1, platform: 'web', status: 'failed', data: null, sources: [], limitations: [], error: 'refresh failed' });
     await assert.rejects(assessSavedResult(1, db, { model }), /latest enrichment/);
     const remove = new DatabaseSync(path); remove.exec('PRAGMA foreign_keys=ON; DELETE FROM search_results WHERE id=1;'); remove.close();

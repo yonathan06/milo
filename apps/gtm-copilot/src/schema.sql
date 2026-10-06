@@ -81,6 +81,21 @@ CREATE TABLE IF NOT EXISTS search_result_assessments (
 ) STRICT;
 CREATE INDEX IF NOT EXISTS search_result_assessments_enrichment_id ON search_result_assessments(enrichment_id, id DESC);
 
+-- Cheap snippet-based screening, separate from evidence-backed assessments and permission.
+CREATE TABLE IF NOT EXISTS search_result_link_rankings (
+  result_id INTEGER PRIMARY KEY REFERENCES search_results(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('complete', 'failed')),
+  score REAL CHECK (score BETWEEN 0 AND 100),
+  confidence REAL CHECK (confidence BETWEEN 0 AND 1),
+  model_id TEXT NOT NULL,
+  rubric_version TEXT NOT NULL,
+  input_fingerprint TEXT NOT NULL,
+  response_json TEXT CHECK (response_json IS NULL OR json_valid(response_json)),
+  error TEXT,
+  ranked_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+) STRICT;
+CREATE INDEX IF NOT EXISTS search_result_link_rankings_score ON search_result_link_rankings(status, score DESC);
+
 -- Human decisions never overwrite the automated evidence/verification record.
 CREATE TABLE IF NOT EXISTS enrichment_outreach_reviews (
   id INTEGER PRIMARY KEY,

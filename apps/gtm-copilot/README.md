@@ -211,6 +211,30 @@ Each retained Apify source includes Actor/run/dataset IDs and readable allowlist
 
 Extraction includes name, description, **lastObservedActivity** (not a claim about the community's true last-active time), member count, location/language, visibility, publicly listed admins, public contact routes, recent observed posts, promotion rules, event/video signals, suggested outreach angles and additional growth/activity/media-capability metrics. Metadata dates/counts are not treated as observed post activity. A failed quote-validation pass can receive one bounded correction request; unsupported evidence is still rejected. Every fact/angle carries a source URL and a verbatim quote verified against collected text. Unknowns remain null/empty. Suggestions are not factual claims or permission to send messages. Evidence checks establish quote presence, not semantic correctness; review output before outreach.
 
+### Cheap Jev link ranking before enrichment
+
+Set `TYPESAFE_API_KEY` in the server/CLI environment. The new CLI screens saved URLs, titles and descriptions with TypeSafe Jev; **it does not scrape**. Its five-level Score is normalized to 0–100 and saved with confidence, model, rubric, source fingerprint, raw response and token usage in `search_result_link_rankings`. These are preliminary relevance scores, not evidence-backed match scores or permission to contact.
+
+```bash
+# Start with a bounded pilot (paid TypeSafe calls).
+pnpm --filter gtm-copilot rank:links --limit 100
+# Rank one link, or resume all remaining links. Completed unchanged rows are skipped.
+pnpm --filter gtm-copilot rank:links --result-id 1
+pnpm --filter gtm-copilot rank:links --all
+# Preview counts without calling TypeSafe.
+pnpm --filter gtm-copilot rank:links --all --dry-run
+# Preview the best 100 qualifying links (no scraping or model calls).
+pnpm --filter gtm-copilot enrich:ranked --min-score 75 --limit 100
+# Explicitly execute paid enrichment/verification/assessment for that shortlist.
+pnpm --filter gtm-copilot enrich:ranked --min-score 75 --min-confidence 0.5 --limit 100 --execute
+```
+
+Default model: pinned `jev-1.13.0`; override with `GTM_LINK_RANKING_MODEL` or `--model` (a pinned version ID). Rank commands default to 100 links; `--all` is explicit. `--force` reranks previously completed rows. Provider errors stop ranking; rerunning resumes without repeating successful work. Failed rankings, changed snippets, other model versions and other rubrics do not qualify for ranked enrichment. Enrichment selects descending relevance, then confidence, skips current complete assessments, and reuses saved meaningful extraction via the existing pipeline. Thresholds are initial policy choices, not validated accuracy guarantees; evaluate a pilot and sample excluded/uncertain/non-English links before large runs. Confidence describes distribution concentration, not outreach safety.
+
+The Results page also has a **Rank unranked results with Jev** button. It processes all saved results needing a current ranking, independent of filters/pagination, and polls bounded job counts/token usage every two seconds. One process-local ranking queue rejects overlapping starts; provider errors stop the queue, preserving completed scores for retry. The button uses server-side `TYPESAFE_API_KEY`; progress disappears on server restart but saved rankings survive. Ranking does not launch enrichment. Run `pnpm --filter gtm-copilot db:init` before using this button on an existing database; web status/actions never migrate schema.
+
+CLI startup adds the ranking table without deleting existing data. No paid calls run during migration. The existing web **Enrich & assess** action and single-result `enrich` command remain unfiltered; use **`enrich:ranked`** for score-gated spending. Community-level collection deduplication is not part of this pipeline yet. Do not run separate enrichment CLIs and the web enrichment queue concurrently.
+
 ### Post-enrichment match and permissions assessment
 
 Use `pnpm --filter gtm-copilot assess --result-id 2` for saved-source assessment only; `--model MODEL` overrides the assessment model and `--force` explicitly reassesses a current result. The enrichment CLI and web “Enrich & assess” action also assess existing enriched results missing a current assessment without scraping them again. Assessment-only web requests use `startResultAssessment({ data: { resultId: 2 } })`; optional `segmentId` must contain the result. Both actions share one sequential queue. Progress reports `enrichment` and `assessment` phases separately; failures remain retryable, while current assessments are skipped. No sources are recollected by the assessment-only action.
