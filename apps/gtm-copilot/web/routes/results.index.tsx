@@ -2,7 +2,7 @@ import { createFileRoute, stripSearchParams, useRouterState, type SearchSchemaIn
 import { createQuery } from '@tanstack/solid-query';
 import { batch, createEffect, createMemo, createSignal, For, on, onCleanup, Show } from 'solid-js';
 import { resultsOptions } from '../data';
-import type { ResultsPageRequest } from '../results-page';
+import { resultsPageSchema, type ResultsPageRequest } from '../results-page';
 import { defaultResultsSearch, parseResultsSearch } from '../results-search';
 import { ResultEnrichment } from '../components/result-enrichment';
 import { ResultLinkRanking } from '../components/result-link-ranking';
@@ -40,6 +40,17 @@ function AllResults() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => update({ search: value }), 250);
   };
+  const [customHostInput, setCustomHostInput] = createSignal(request().customHost);
+  let hostTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(hostTimer));
+  const updateCustomHost = (value: string) => {
+    setCustomHostInput(value);
+    clearTimeout(hostTimer);
+    hostTimer = setTimeout(() => {
+      const parsed = resultsPageSchema.shape.customHost.safeParse(value);
+      if (parsed.success) update({ customHost: parsed.data });
+    }, 250);
+  };
   const [jevMin, setJevMin] = createSignal(request().jevMin);
   const [jevMax, setJevMax] = createSignal(request().jevMax);
   let rangeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -53,10 +64,11 @@ function AllResults() {
   createEffect(on(request, (value) => {
     clearTimeout(searchTimer);
     clearTimeout(rangeTimer);
-    batch(() => { setSearchInput(value.search); setJevMin(value.jevMin); setJevMax(value.jevMax); });
+    clearTimeout(hostTimer);
+    batch(() => { setSearchInput(value.search); setCustomHostInput(value.customHost); setJevMin(value.jevMin); setJevMax(value.jevMax); });
   }));
   const [filtersOpen, setFiltersOpen] = createSignal(false);
-  const activeCount = createMemo(() => Number(Boolean(searchInput().trim())) + countries().length + segments().length + Number(jevMin() > 0 || jevMax() < 100) + Number(ranking() !== 'all') + Number(enrichment() !== 'all'));
+  const activeCount = createMemo(() => Number(Boolean(searchInput().trim())) + countries().length + segments().length + Number(jevMin() > 0 || jevMax() < 100) + Number(ranking() !== 'all') + Number(enrichment() !== 'all') + Number(request().host !== 'all'));
   const data = createQuery(() => resultsOptions(request()));
   const availableCountries = createMemo(() => data.data?.countries ?? []);
   const availableSegments = createMemo(() => data.data?.segments ?? []);
@@ -66,15 +78,16 @@ function AllResults() {
   const clear = () => {
     clearTimeout(searchTimer);
     clearTimeout(rangeTimer);
-    batch(() => { setSearchInput(''); setJevMin(0); setJevMax(100); });
-    update({ search: '', countries: [], segments: [], jevMin: 0, jevMax: 100, ranking: 'all', enrichment: 'all' });
+    clearTimeout(hostTimer);
+    batch(() => { setSearchInput(''); setCustomHostInput(''); setJevMin(0); setJevMax(100); });
+    update({ search: '', host: 'all', customHost: '', countries: [], segments: [], jevMin: 0, jevMax: 100, ranking: 'all', enrichment: 'all' });
   };
   const buttonClass = 'rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
 
   return <>
     <PageHeading title="All search results"><Badge>{data.data?.totalCount ?? 0} unique results</Badge><Badge>{data.data?.enrichedCount ?? 0} enriched</Badge></PageHeading>
     <Show when={data.data}><ResultLinkRanking /></Show>
-    <Show when={data.data}>{(response) => <ResultEnrichment results={[]} filters={request()} scopeUpdating={navigating() || data.isFetching || searchInput() !== request().search || jevMin() !== request().jevMin || jevMax() !== request().jevMax} counts={{ pending: response().matchedPendingCount, pendingAssessments: response().matchedPendingAssessmentCount }} />}</Show>
+    <Show when={data.data}>{(response) => <ResultEnrichment results={[]} filters={request()} scopeUpdating={navigating() || data.isFetching || (request().host === 'custom' && customHostInput() !== request().customHost) || searchInput() !== request().search || jevMin() !== request().jevMin || jevMax() !== request().jevMax} counts={{ pending: response().matchedPendingCount, pendingAssessments: response().matchedPendingAssessmentCount, matched: response().matchedCount, unscraped: response().matchedUnscrapedCount, extraction: response().matchedExtractionCount }} />}</Show>
     <Show when={data.isPending}><p role="status">Loading results…</p></Show>
     <Show when={data.isError}><p role="alert">Could not load results. <button type="button" class="underline" onClick={() => void data.refetch()}>Retry</button></p></Show>
     <Show when={data.data}><Show when={data.data?.totalCount} fallback={<Empty title="No search results yet">Run a search from a segment’s Queries tab to collect results.</Empty>}>
@@ -86,6 +99,8 @@ function AllResults() {
         </div>
         <div id="result-filters" hidden={!filtersOpen()} class="space-y-4 border-t border-slate-100 p-3 sm:p-4">
           <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <label class="text-sm font-medium text-slate-700">Link host<select value={request().host} onChange={(event) => update({ host: event.currentTarget.value as ResultsPageRequest['host'] })} class="mt-2 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-normal"><For each={['all', 'reddit', 'facebook', 'x', 'instagram', 'linkedin', 'youtube', 'tiktok', 'custom'] as const}>{(host) => <option value={host} selected={request().host === host}>{({ all: 'All hosts', reddit: 'Reddit', facebook: 'Facebook', x: 'X / Twitter', instagram: 'Instagram', linkedin: 'LinkedIn', youtube: 'YouTube', tiktok: 'TikTok', custom: 'Custom domain' })[host]}</option>}</For></select></label>
+            <Show when={request().host === 'custom'}><label class="text-sm font-medium text-slate-700">Custom domain<input type="text" value={customHostInput()} onInput={(event) => updateCustomHost(event.currentTarget.value)} placeholder="example.com" class="mt-2 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-normal" /><span class="mt-1 block text-xs font-normal text-slate-500">Domain only; includes subdomains.</span><Show when={!resultsPageSchema.shape.customHost.safeParse(customHostInput()).success}><span role="alert" class="mt-1 block text-xs text-red-700">Enter a domain such as example.com, without a URL or path.</span></Show></label></Show>
             <fieldset class="min-w-0"><legend class="mb-2 text-sm font-medium text-slate-700">Jev relevance <span class="font-normal text-teal-700">{jevMin()}–{jevMax()} / 100</span></legend>
               <div class="grid grid-cols-2 gap-3">
                 <label class="text-xs text-slate-500">Minimum: {jevMin()}<input type="range" min="0" max="100" step="1" value={jevMin()} aria-label="Minimum Jev relevance" aria-valuetext={`${jevMin()} out of 100`} onInput={(event) => { updateRange('min', Number(event.currentTarget.value)); event.currentTarget.value = String(jevMin()); }} class="mt-2 block w-full accent-teal-600" /></label>

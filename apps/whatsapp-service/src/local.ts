@@ -1,13 +1,17 @@
 // Local-only entry point. Never referenced by the production Wrangler config.
 import { withLocalDatabase, validateLocalDatabaseUrl } from "@video-editor-agent/db/local";
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { agentRun, conversation, deliveryEvent, message, outboxIntent, whatsappChannel, whatsappIdentity } from "@video-editor-agent/db/schema";
+import { and, desc, eq } from "drizzle-orm";
+import { conversation, deliveryEvent, whatsappChannel, whatsappIdentity } from "@video-editor-agent/db/schema";
 import type { Env } from "./env.ts";
-import { createService } from "./service.ts";
+import { createService, recoverConversations } from "./service.ts";
+import { createConversationCoordinator } from "./coordination/conversation.ts";
 import { dispatchProcessing } from "./outbox/dispatch.ts";
 import { BodyTooLarge, readBoundedBody } from "./http/webhook.ts";
+import { allowsSimulatorRequest } from "./http/local-access.ts";
+import { agentReadiness } from "./agent/agent-client.ts";
+import { loadConversationState } from "./agent/conversation-state.ts";
 
-interface LocalEnv extends Env { LOCAL_DATABASE_URL: string; SIMULATOR_PUBLIC_ORIGIN?: string; ASSETS: Fetcher }
+interface LocalEnv extends Env { LOCAL_DATABASE_URL: string; ALLOW_TRYCLOUDFLARE?: string; ASSETS: Fetcher }
 const service = createService(withLocalDatabase);
 const channelId = "local-whatsapp-channel";
 const accountId = "local-business-account";
@@ -19,6 +23,8 @@ function runtimeEnv(env: LocalEnv): Env {
   validateLocalDatabaseUrl(env.LOCAL_DATABASE_URL);
   return { ...env, DATABASE_URL: env.LOCAL_DATABASE_URL };
 }
+
+export const ConversationCoordinator = createConversationCoordinator(withLocalDatabase, env => runtimeEnv(env as LocalEnv));
 
 async function seed(env: Env) {
   await withLocalDatabase(env.DATABASE_URL, async db => {
@@ -45,20 +51,22 @@ async function simulate(input: Record<string, unknown>, env: Env): Promise<Respo
   const response = await service.fetch(new Request("http://localhost/webhooks/whatsapp", {
     method: "POST", body, headers: { "x-hub-signature-256": `sha256=${input.invalidSignature === true ? "0".repeat(64) : signature}` },
   }), env);
-  return json({ providerMessageId, webhookStatus: response.status, result: await response.text() }, response.status);
+  const state = response.ok ? await (await snapshot(sender, env)).json() : undefined;
+  return json({ providerMessageId, webhookStatus: response.status, result: await response.text(), state }, response.status);
 }
 
 async function snapshot(sender: string, env: Env): Promise<Response> {
   if (!/^[1-9][0-9]{1,14}$/.test(sender)) return json({ error: "Invalid sender." }, 400);
+  const responder = {
+    mode: env.AGENT_ENABLED === "true" ? "agent" : env.TEST_RESPONDER_ENABLED === "true" ? "deterministic" : "disabled",
+    readiness: await agentReadiness(env),
+  };
   return withLocalDatabase(env.DATABASE_URL, async db => {
     const [chat] = await db.select({ id: conversation.id, nextSequence: conversation.nextSequence, status: conversation.status })
       .from(conversation).innerJoin(whatsappIdentity, eq(whatsappIdentity.id, conversation.whatsappIdentityId))
       .where(and(eq(whatsappIdentity.channelId, channelId), eq(whatsappIdentity.providerSenderId, sender)));
-    const messages = chat ? await db.select().from(message).where(eq(message.conversationId, chat.id)).orderBy(desc(message.sequence)).limit(100) : [];
-    const ids = messages.map(row => row.id);
-    const intents = ids.length ? await db.select().from(outboxIntent).where(inArray(outboxIntent.messageId, ids)) : [];
-    const runs = ids.length ? await db.select().from(agentRun).where(inArray(agentRun.incomingMessageId, ids)) : [];
-    return json({ conversation: chat ?? null, messages: messages.reverse(), intents, runs,
+    const state = await loadConversationState(db, chat?.id ?? null);
+    return json({ responder, ...state,
       callbacks: await db.select().from(deliveryEvent).where(eq(deliveryEvent.channelId, channelId)).orderBy(desc(deliveryEvent.receivedAt)).limit(20) });
   });
 }
@@ -66,19 +74,31 @@ async function snapshot(sender: string, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request, env: LocalEnv): Promise<Response> {
     const url = new URL(request.url);
-    // Tunnel TLS terminates before the local Worker, so its URL may be HTTP while
-    // the browser Origin is HTTPS. Explicit configuration handles that difference.
-    const publicOrigin = env.SIMULATOR_PUBLIC_ORIGIN ? new URL(env.SIMULATOR_PUBLIC_ORIGIN).origin : null;
-    const publicHost = publicOrigin ? new URL(publicOrigin).host : null;
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && url.host !== publicHost) return new Response("Local only", { status: 403 });
+    if (!allowsSimulatorRequest(request, env.ALLOW_TRYCLOUDFLARE === "true")) return new Response("Host or origin not allowed", { status: 403 });
     if (url.pathname.startsWith("/dev/")) {
-      const origin = request.headers.get("origin");
-      if ((origin && origin !== url.origin && origin !== publicOrigin) || request.headers.get("sec-fetch-site") === "cross-site") return json({ error: "Same-origin requests only." }, 403);
       try {
         const runtime = runtimeEnv(env);
         if (url.pathname === "/dev/state" && request.method === "GET") return await snapshot(url.searchParams.get("sender") ?? "", runtime);
+        if (url.pathname === "/dev/events" && request.method === "GET") {
+          if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") return json({ error: "WebSocket required" }, 426);
+          const sender = url.searchParams.get("sender") ?? "";
+          if (!/^[1-9][0-9]{1,14}$/.test(sender)) return json({ error: "Invalid sender." }, 400);
+          const chat = await withLocalDatabase(runtime.DATABASE_URL, async db => {
+            const [row] = await db.select({ id: conversation.id }).from(conversation)
+              .innerJoin(whatsappIdentity, eq(whatsappIdentity.id, conversation.whatsappIdentityId))
+              .where(and(eq(whatsappIdentity.channelId, channelId), eq(whatsappIdentity.providerSenderId, sender)));
+            return row;
+          });
+          if (!chat) return json({ error: "Conversation not found" }, 404);
+          const stub = runtime.CONVERSATIONS.get(runtime.CONVERSATIONS.idFromName(chat.id));
+          return stub.fetch(new Request(`http://coordinator/events?conversationId=${encodeURIComponent(chat.id)}`, request));
+        }
         if (request.method !== "POST") return json({ error: "Not found" }, 404);
-        if (url.pathname === "/dev/dispatch") return json({ published: await withLocalDatabase(runtime.DATABASE_URL, db => dispatchProcessing(db, runtime.PROCESSING_QUEUE)) });
+        if (url.pathname === "/dev/dispatch") {
+          const published = await withLocalDatabase(runtime.DATABASE_URL, db => dispatchProcessing(db, runtime.PROCESSING_QUEUE));
+          const scheduled = await recoverConversations(withLocalDatabase, runtime);
+          return json({ published, scheduled });
+        }
         if (url.pathname === "/dev/send") {
           if (!request.headers.get("content-type")?.startsWith("application/json")) return json({ error: "JSON required" }, 400);
           const body = new TextDecoder().decode(await readBoundedBody(request, 8192));

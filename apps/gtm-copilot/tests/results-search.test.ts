@@ -6,7 +6,7 @@ test('URL search restores filters, sorting and pagination from strings or JSON v
   const request = parseResultsSearch({ search: 'video editors', countries: ['US', 'CA'], segments: ['1', 2],
     jevMin: '70', jevMax: 90, ranking: 'ranked', enrichment: 'not_enriched',
     sort: 'jev', descending: 'false', page: '2', pageSize: '50' });
-  assert.deepEqual(request, { search: 'video editors', countries: ['US', 'CA'], segments: [1, 2],
+  assert.deepEqual(request, { search: 'video editors', host: 'all', customHost: '', countries: ['US', 'CA'], segments: [1, 2],
     jevMin: 70, jevMax: 90, ranking: 'ranked', enrichment: 'not_enriched',
     sort: 'jev', descending: false, page: 2, pageSize: 50 });
   assert.deepEqual(parseResultsSearch({ countries: 'US', segments: '3' }).countries, ['US']);

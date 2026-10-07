@@ -4,12 +4,22 @@ import type { AssessmentContext } from '../../src/result-assessment.ts';
 import type { AllResult, AllResultDiscovery, Result } from './store.ts';
 import type { ResultsFilterRequest, ResultsPageRequest } from '../results-page.ts';
 import { readLinkRankingDisplay } from './link-ranking-display.ts';
-import { matchesResultState } from '../result-filters.ts';
+import { matchesResultHost, matchesResultState } from '../result-filters.ts';
+
+/** A result counts as scraped when any preserved attempt saved at least one raw source. */
+const scrapedExpr = (alias: string) => `EXISTS (SELECT 1 FROM search_result_enrichments se WHERE se.result_id = ${alias}
+  AND json_array_length(coalesce(se.sources_json, '[]')) > 0)`;
+
+function scrapedResultIds(db: DatabaseSync) {
+  return new Set(db.prepare(`SELECT DISTINCT result_id FROM search_result_enrichments
+    WHERE json_array_length(coalesce(sources_json, '[]')) > 0`).all().map((row) => Number(row.result_id)));
+}
 
 /** Only enriched/assessed URLs need freshness and context checks. Batch these instead of
  * issuing three projection queries for every saved URL (including un-enriched URLs). */
 function summaries(db: DatabaseSync) {
   const rows = db.prepare(`SELECT e.*,
+    ${scrapedExpr('e.result_id')} AS scraped,
     EXISTS (SELECT 1 FROM search_result_enrichments old WHERE old.result_id = e.result_id
       AND old.status IN ('complete', 'partial') AND has_enrichment_data(old.data_json) = 1) AS enriched,
     (SELECT json_extract(old.verification_json, '$.assessment.audienceFit.rating') FROM search_result_enrichments old
@@ -45,7 +55,7 @@ function summaries(db: DatabaseSync) {
     const summary = assessmentSummary({ id: Number(row.id), status: String(row.status),
       data: row.data_json == null ? null : JSON.parse(String(row.data_json)), sources: JSON.parse(String(row.sources_json)) },
     byResult.get(id), contexts.get(id) ?? []);
-    return [id, { ...summary, enriched: Boolean(row.enriched), audience_fit: row.audience_fit as string | null }] as const;
+    return [id, { ...summary, enriched: Boolean(row.enriched), audience_fit: row.audience_fit as string | null, scraped: Boolean(row.scraped) }] as const;
   }));
 }
 
@@ -63,6 +73,10 @@ function resultScope(db: DatabaseSync, request: ResultsFilterRequest) {
     if (request.countries.length) { conditions.push('c.country_code IN (SELECT value FROM json_each(?))'); params.push(JSON.stringify(request.countries)); }
     if (request.segments.length) { conditions.push('s.id IN (SELECT value FROM json_each(?))'); params.push(JSON.stringify(request.segments)); }
     where.push(`EXISTS (SELECT 1 ${discoveryFrom} WHERE ${conditions.join(' AND ')})`);
+  }
+  if (request.host !== 'all') {
+    db.function('matches_result_host', { deterministic: true }, (url) => matchesResultHost(String(url), request) ? 1 : 0);
+    where.push('matches_result_host(r.url) = 1');
   }
   const search = request.search.trim().toLowerCase();
   if (search) {
@@ -86,9 +100,10 @@ function resultScope(db: DatabaseSync, request: ResultsFilterRequest) {
 /** Snapshot the entire filtered scope without projecting discoveries or applying pagination. */
 export function readFilteredEnrichmentResults(db: DatabaseSync, request: ResultsFilterRequest) {
   const { states, params, filter } = resultScope(db, request);
+  const scraped = scrapedResultIds(db);
   return db.prepare(`SELECT r.id FROM search_results r ${filter} ORDER BY r.id`).all(...params).map((row) => {
     const id = Number(row.id);
-    return { id, assessment_status: states.get(id)?.assessment_status ?? 'not_enriched', assessment_ready: states.get(id)?.assessment_ready ?? false };
+    return { id, assessment_status: states.get(id)?.assessment_status ?? 'not_enriched', assessment_ready: states.get(id)?.assessment_ready ?? false, scraped: scraped.has(id) };
   });
 }
 
@@ -99,8 +114,11 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
     const state = states.get(Number(id));
     return state?.assessment_status === 'complete' ? 0 : state?.assessment_ready ? 2 : 1;
   });
+  db.function('result_needs_extraction', { deterministic: true }, (id) => states.get(Number(id))?.assessment_ready ? 0 : 1);
   const counts = db.prepare(`SELECT count(*) AS matched, coalesce(sum(result_pending_state(r.id) > 0), 0) AS pending,
-    coalesce(sum(result_pending_state(r.id) = 2), 0) AS assessments FROM search_results r ${filter}`).get(...params)!;
+    coalesce(sum(result_pending_state(r.id) = 2), 0) AS assessments,
+    coalesce(sum(NOT ${scrapedExpr('r.id')}), 0) AS unscraped,
+    coalesce(sum(${scrapedExpr('r.id')} AND result_needs_extraction(r.id)), 0) AS extraction FROM search_results r ${filter}`).get(...params)!;
   const matchedCount = Number(counts.matched);
   const pageCount = Math.max(1, Math.ceil(matchedCount / request.pageSize));
   const page = Math.min(request.page, pageCount);
@@ -133,13 +151,15 @@ export function readResultsPage(db: DatabaseSync, request: ResultsPageRequest) {
     WHERE qr.result_id IN (SELECT value FROM json_each(?)) ORDER BY qr.collected_at DESC, qr.rank, q.id`)
     .all(JSON.stringify(rows.map((row) => row.id))) as unknown as (AllResultDiscovery & { result_id: number })[] : [];
   const byId = new Map<number, AllResult>(rows.map((row) => [row.id, { ...row, ...rankings.get(row.id), ...(states.get(row.id) ?? {
-    ...assessmentSummary(undefined, undefined, []), enriched: false, audience_fit: null,
+    ...assessmentSummary(undefined, undefined, []), enriched: false, audience_fit: null, scraped: false,
   }), discoveries: [] }]));
   for (const { result_id, ...discovery } of discoveries) byId.get(result_id)!.discoveries.push(discovery);
   const countries = db.prepare(`SELECT DISTINCT c.country_code ${discoveryFrom} ORDER BY c.country_code`).all().map((row) => String(row.country_code));
   const segments = db.prepare(`SELECT DISTINCT s.id, s.name ${discoveryFrom} ORDER BY s.name COLLATE NOCASE, s.id`).all().map((row) => [Number(row.id), String(row.name)] as const).sort((a, b) => a[1].localeCompare(b[1]));
   return { results: [...byId.values()], page, pageCount, matchedCount, totalCount,
     matchedPendingCount: Number(counts.pending), matchedPendingAssessmentCount: Number(counts.assessments),
+    matchedUnscrapedCount: Number(counts.unscraped),
+    matchedExtractionCount: Number(counts.extraction),
     enrichedCount: [...states.values()].filter((state) => state.enriched).length,
     pendingCount: totalCount - [...states.values()].filter((state) => state.assessment_status === 'complete').length,
     pendingAssessmentCount: [...states.values()].filter((state) => state.assessment_ready && state.assessment_status !== 'complete').length,

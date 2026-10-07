@@ -17,14 +17,15 @@ package. Use a TypeScript bundler (Workers) or Node 24+ for scripts. Add
 - WhatsApp channels, sender identities, conversations, canonical messages, outbound
   send chunks, and delivery callback evidence with Drizzle relationships and SQL guards.
   See [WhatsApp message flow](../../docs/whatsapp-message-flow.md) for the entity model
-  and ASCII end-to-end chart. Processing/acquisition `outbox_intents` now persist
+  and ASCII end-to-end chart. Processing/acquisition/send `outbox_intents` now persist
   unique message-scoped work with claim leases and publication state. The
   [WhatsApp service](../../apps/whatsapp-service/README.md) implements ingestion and
   recoverable processing-queue publication and consumer handoff to one pending
-  `agent_runs` record per inbound message. Migration 0005 guards inbound ownership
-  and immutable run identity with custom SQL not represented in Drizzle snapshots.
-  Agents, ordered run execution, outbound dispatch/provider sends,
-  analytics dispatch and callback reconciliation remain future work.
+  `agent_runs` record per inbound message. The local deterministic responder now
+  completes runs in conversation order with atomic outbound content/chunks/intents.
+  Migrations 0005/0006 guard run identity, response ownership and terminal state with
+  custom SQL not represented in Drizzle snapshots. LLM agents, outbound dispatch/
+  provider sends, analytics dispatch and callback reconciliation remain future work.
 
 Neon is the **candidate** in `docs/whatsapp-database-qualification.md`, not an
 approved or production-qualified provider. This transport requires a Neon

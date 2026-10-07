@@ -5,6 +5,8 @@ import type { AllResult } from './server/store';
 
 export const resultsFilterSchema = z.object({
   search: z.string().max(500).default(''),
+  host: z.enum(['all', 'reddit', 'facebook', 'x', 'instagram', 'linkedin', 'youtube', 'tiktok', 'custom']).default('all'),
+  customHost: z.string().trim().toLowerCase().max(253).regex(/^$|^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/).default(''),
   countries: z.array(z.string().max(10)).max(250).default([]),
   segments: z.array(z.number().int().positive()).max(1000).default([]),
   jevMin: z.number().min(0).max(100).default(0),
@@ -51,6 +53,8 @@ export function paginateResults(results: AllResult[], request: ResultsPageReques
     enrichedCount: results.filter((result) => result.enriched).length,
     matchedPendingCount: filtered.filter((result) => result.assessment_status !== 'complete').length,
     matchedPendingAssessmentCount: filtered.filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length,
+    matchedUnscrapedCount: filtered.filter((result) => !result.scraped).length,
+    matchedExtractionCount: filtered.filter((result) => result.scraped && !result.assessment_ready).length,
     pendingCount: results.filter((result) => result.assessment_status !== 'complete').length,
     pendingAssessmentCount: results.filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length,
     countries: [...new Set(results.flatMap((result) => result.discoveries.map((item) => item.country_code)))].sort(),

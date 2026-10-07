@@ -10,7 +10,7 @@ import type { ResultsPageRequest } from '../results-page.ts';
 export interface Segment { id: number; name: string; description: string; created_at: string; country_count: number; query_count: number; result_count: number; unsearched_query_count: number }
 export interface Country { id: number; country_code: string }
 export interface Query { id: number; query: string; language: string; platform: string; rationale: string; created_at: string; country_code: string; segment_id: number; segment_name: string; result_count: number }
-export interface Result extends Partial<AssessmentSummary> { id: number; url: string; title: string; description: string; created_at: string; enriched?: boolean; audience_fit?: string | null; jev_score?: number; jev_confidence?: number }
+export interface Result extends Partial<AssessmentSummary> { id: number; url: string; title: string; description: string; created_at: string; enriched?: boolean; audience_fit?: string | null; jev_score?: number; jev_confidence?: number; scraped?: boolean }
 export interface RankedResult extends Result { rank: number; collected_at: string }
 export interface ResultDiscovery { query_id: number; query: string; country_code: string; language: string; rank: number; collected_at: string }
 export interface SegmentResult extends Result { discoveries: ResultDiscovery[] }
@@ -49,7 +49,9 @@ export function openReadStore(path = process.env.GTM_DATABASE_PATH ?? resolve('d
     const row = get<Record<string, unknown>>('SELECT * FROM search_result_enrichments WHERE result_id = ? ORDER BY id DESC LIMIT 1', result.id);
     const enrichment = row ? { id: Number(row.id), status: String(row.status), data: row.data_json == null ? null : JSON.parse(String(row.data_json)), sources: JSON.parse(String(row.sources_json)) } : undefined;
     linkRankings ??= readLinkRankingDisplay(db);
-    return { ...result, ...linkRankings.get(result.id), ...assessmentSummary(enrichment, assessments(result.id)[0], context(result.id)) };
+    // Any preserved attempt with sources means this URL has already been scraped.
+    const scraped = Number(get<{ n: number }>("SELECT count(*) AS n FROM search_result_enrichments WHERE result_id = ? AND json_array_length(coalesce(sources_json, '[]')) > 0", result.id)!.n) > 0;
+    return { ...result, ...linkRankings.get(result.id), ...assessmentSummary(enrichment, assessments(result.id)[0], context(result.id)), scraped };
   };
   const hasSearchTracking = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'search_query_completions'").get();
   const unsearched = `NOT EXISTS (SELECT 1 FROM search_query_results qr WHERE qr.query_id = q.id)${hasSearchTracking ? ' AND NOT EXISTS (SELECT 1 FROM search_query_completions sc WHERE sc.query_id = q.id)' : ''}`;

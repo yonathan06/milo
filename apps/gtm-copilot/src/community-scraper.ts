@@ -8,16 +8,17 @@ import { scrapeWithFirecrawl } from './firecrawl.ts';
 import { renderWebHtml } from './rendered-web.ts';
 import { cleanExtractionHtml, compactExtractionHtml } from './extraction-html.ts';
 import { collectWithApify } from './apify.ts';
+import { collectWithRedditApis } from './redditapis.ts';
 import type { ProviderRun } from './scraping-metadata.ts';
 const robotsParser = createRequire(import.meta.url)('robots-parser') as (url: string, text: string) => {
   isAllowed(url: string, userAgent: string): boolean | undefined;
   getCrawlDelay(userAgent: string): number | undefined;
 };
 
-export const collectors = ['auto', 'native', 'playwright', 'firecrawl', 'apify'] as const;
+export const collectors = ['auto', 'native', 'redditapis', 'playwright', 'firecrawl', 'apify'] as const;
 export type Collector = typeof collectors[number];
 export interface Source {
-  url: string; fetchedAt: string; text: string; collector?: 'native' | 'playwright' | 'firecrawl' | 'apify'; format?: 'text' | 'html';
+  url: string; fetchedAt: string; text: string; collector?: 'native' | 'redditapis' | 'playwright' | 'firecrawl' | 'apify'; format?: 'text' | 'html';
   provider?: { actorId: string; runId: string; datasetId: string };
   kind?: 'posts' | 'community_metadata' | 'web_page';
 }
@@ -81,6 +82,7 @@ export async function collectCommunitySources(input: string, options: {
   fetch?: typeof globalThis.fetch;
   abortSignal?: AbortSignal;
   redditToken?: string;
+  redditApiKey?: string;
   collector?: Collector;
   onDiagnostic?: DiagnosticObserver;
   firecrawlApiKey?: string;
@@ -97,17 +99,23 @@ export async function collectCommunitySources(input: string, options: {
     : belongsTo('reddit.com') || belongsTo('redd.it') ? 'reddit' : 'web';
   const collection: Collection = { platform, sources: [], limitations: [] };
   const selected = options.collector ?? process.env.GTM_SCRAPE_COLLECTOR ?? 'auto';
-  if (!collectors.includes(selected as Collector)) throw new Error('Collector must be auto, native, playwright, firecrawl, or apify.');
+  if (!collectors.includes(selected as Collector)) throw new Error('Collector must be auto, native, redditapis, playwright, firecrawl, or apify.');
   const apifyApiKey = (options.apifyApiKey ?? process.env.APIFY_KEY)?.trim() ?? '';
   const redditToken = (options.redditToken ?? process.env.REDDIT_ACCESS_TOKEN)?.trim();
-  if ((platform === 'facebook' || platform === 'reddit') && (selected === 'apify'
-    || selected === 'auto' && apifyApiKey && !(platform === 'reddit' && redditToken))) {
+  const redditApiKey = (options.redditApiKey ?? process.env.REDDITAPIS_API_KEY)?.trim() ?? '';
+  if (platform === 'reddit' && (selected === 'redditapis' || selected === 'auto')) {
+    return collectWithRedditApis(input, {
+      apiKey: redditApiKey, maxPosts: options.maxPosts, fetch: options.fetch, abortSignal: options.abortSignal, onDiagnostic: options.onDiagnostic,
+    });
+  }
+  if (selected === 'redditapis' && platform !== 'reddit') throw new Error('The RedditApis collector supports Reddit community and post URLs only.');
+  if (selected === 'apify' && platform !== 'facebook') throw new Error('The Apify collector supports Facebook group URLs only. Use redditapis for Reddit.');
+  if (platform === 'facebook' && (selected === 'apify' || selected === 'auto' && apifyApiKey)) {
     return collectWithApify(input, platform, {
       apiKey: apifyApiKey, maxPosts: options.maxPosts, maxChargeUsd: options.apifyMaxChargeUsd,
       fetch: options.fetch, abortSignal: options.abortSignal, onDiagnostic: options.onDiagnostic,
     });
   }
-  if (selected === 'apify' && platform === 'web') throw new Error('The Apify collector supports Facebook group and Reddit community URLs only.');
   if (platform === 'facebook') {
     collection.limitations.push('Facebook collection needs APIFY_KEY for the public-groups Actor, or an authorized integration/admin export. No login/captcha bypass is attempted; review platform authorization requirements.');
     return collection;
@@ -160,7 +168,7 @@ export async function collectCommunitySources(input: string, options: {
     const token = redditToken;
     const subreddit = url.pathname.match(/^\/r\/([a-z0-9_]+)(?:\/|$)/i)?.[1];
     if (!token || !subreddit) {
-      collection.limitations.push('Reddit collection requires a /r/subreddit URL. For Apify, set APIFY_KEY (no Reddit token needed). Alternatively, the native Reddit API collector requires approved OAuth access with REDDIT_ACCESS_TOKEN. Review platform terms and commercial-use permissions.');
+      collection.limitations.push('Reddit native collection requires a /r/subreddit URL and approved OAuth access with REDDIT_ACCESS_TOKEN. Use the default redditapis integration with REDDITAPIS_API_KEY for community and post URLs. Review platform terms and commercial-use permissions.');
       return collection;
     }
     for (const path of ['about', 'new?limit=10', 'about/moderators']) {

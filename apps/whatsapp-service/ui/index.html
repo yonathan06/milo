@@ -18,12 +18,12 @@
         <div class="options"><label><input id="auto-dispatch" type="checkbox" checked> Dispatch after send</label><label><input id="invalid" type="checkbox"> Invalid signature</label></div>
         <div class="buttons"><button id="duplicate" type="button" class="secondary" disabled>Resend duplicate</button><button id="send" type="submit">Send message ↗</button></div>
       </form>
-      <p class="note">The current flow ends at a durable <strong>pending agent run</strong>. No AI replies or outbound sender exist yet.</p>
+      <p class="note">Messages go through the <strong>queue and AI agent</strong> before replies appear. Responses and send intents are persisted; nothing is sent to real WhatsApp.</p>
     </section>
     <section class="inspector">
       <div class="inspector-header"><div><p class="eyebrow">SERVICE INSPECTOR</p><h2>Follow the handoff</h2></div><button id="refresh" class="secondary">Refresh</button></div>
-      <div class="flow"><span>Webhook</span><b>→</b><span>Outbox</span><b>→</b><span>Local queue</span><b>→</b><span>Pending run</span></div>
-      <div class="metrics"><div><strong id="message-count">0</strong><span>Messages</span></div><div><strong id="pending-count">0</strong><span>Outbox waiting</span></div><div><strong id="run-count">0</strong><span>Pending runs</span></div></div>
+      <div class="flow"><span>Webhook</span><b>→</b><span>Outbox</span><b>→</b><span>Local queue</span><b>→</b><span>Ordered reply</span></div>
+      <div class="metrics"><div><strong id="message-count">0</strong><span>Messages</span></div><div><strong id="pending-count">0</strong><span>Outbox waiting</span></div><div><strong id="run-count">0</strong><span>Completed runs</span></div></div>
       <div class="toolbar"><button id="dispatch">Run outbox dispatcher</button><span>Queue consumer runs automatically.</span></div>
       <p id="status" role="status">Connecting to local services…</p>
       <h3>Message processing</h3><div id="records" class="records"></div>

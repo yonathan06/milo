@@ -34,7 +34,6 @@ export function ResultLinkRanking(props: { resultId?: number }) {
       onClick={() => { setMessage(''); mutation.mutate(); }}>
       {busy() ? 'Ranking with Jev…' : props.resultId !== undefined ? (status.data?.pendingCount ? 'Rank this result with Jev' : 'Result ranked with Jev') : `Rank ${status.data?.pendingCount ?? 0} unranked results with Jev`}
     </button>
-    <p class="mt-3 text-xs text-slate-500">{props.resultId !== undefined ? 'Ranks only this result.' : 'Ranks all saved results needing a current score, regardless of filters or pagination.'} Uses saved URLs, titles and snippets only; TypeSafe charges apply. Current rankings are skipped; failed or outdated rankings are retried. No scraping, enrichment or outreach is performed.</p>
     <Show when={message() || status.data?.error || status.data?.job?.error}><p role="alert" class="mt-3 text-sm text-rose-800">{message() || status.data?.error || status.data?.job?.error}</p></Show>
     <Show when={status.isError}><p role="alert" class="mt-3 text-sm text-rose-800">Could not load ranking status. <button type="button" class="underline" onClick={() => void status.refetch()}>Retry status</button></p></Show>
     <Show when={status.data?.job}>{(job) => <p role="status" aria-live="polite" class="mt-3 text-sm">

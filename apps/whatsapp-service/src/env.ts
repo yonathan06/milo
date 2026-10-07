@@ -8,5 +8,10 @@ export interface Env {
   WHATSAPP_APP_SECRET: string;
   WHATSAPP_VERIFY_TOKEN: string;
   DISPATCH_ENABLED?: string;
+  TEST_RESPONDER_ENABLED?: string;
+  AGENT_ENABLED?: string;
+  SIMULATOR_EVENTS_ENABLED?: string;
+  AGENT?: Fetcher;
+  CONVERSATIONS: DurableObjectNamespace;
   PROCESSING_QUEUE: { send(job: ProcessingJob): Promise<unknown> };
 }

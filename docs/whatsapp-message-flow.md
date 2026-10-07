@@ -12,9 +12,12 @@ incoming acceptance and referral attribution, callback evidence persistence, and
 processing/acquisition outbox intents. A scheduled dispatcher publishes processing
 message IDs to Cloudflare Queues with recoverable claims; dispatch is disabled by
 default. The processing consumer now commits a unique pending `agent_runs` row
-before acknowledgment, with per-item retries and a configured DLQ. Ordered run
-coordination/execution is not implemented. Acquisition analytics dispatch, agent execution,
-send outboxes/provider sends, and callback reconciliation remain runtime work.
+before acknowledgment, with per-item retries and a configured DLQ. Conversation
+Durable Objects and PostgreSQL row locks now coordinate ordered deterministic test
+replies, saving outbound content, chunks, send intents and terminal run state
+atomically. This test responder is enabled only in the local config. LLM execution,
+acquisition analytics dispatch, outbound queue/provider sends and callback
+reconciliation remain runtime work.
 See the [service README](../apps/whatsapp-service/README.md) for setup and tests.
 Memory, media ingestion, and the video pipeline remain outside this milestone.
 

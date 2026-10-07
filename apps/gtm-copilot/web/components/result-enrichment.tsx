@@ -4,17 +4,18 @@ import { enrichmentStatusOptions, startResultAssessment, startResultEnrichment }
 import type { Result } from '../server/store';
 import type { ResultsFilterRequest } from '../results-page';
 
-export function ResultEnrichment(props: { segmentId?: number; resultId?: number; results: Result[]; filters?: ResultsFilterRequest; scopeUpdating?: boolean; counts?: { pending: number; pendingAssessments: number } }) {
+export function ResultEnrichment(props: { segmentId?: number; resultId?: number; results: Result[]; filters?: ResultsFilterRequest; scopeUpdating?: boolean; counts?: { pending: number; pendingAssessments: number; matched?: number; unscraped?: number; extraction?: number } }) {
   const client = useQueryClient();
   const status = createQuery(enrichmentStatusOptions);
   const [message, setMessage] = createSignal('');
   const scoped = () => props.results.filter((result) => props.resultId === undefined || result.id === props.resultId);
-  const pending = () => props.counts?.pending ?? scoped().filter((result) => result.assessment_status !== 'complete').length;
+  const pendingExtraction = () => props.counts?.extraction ?? scoped().filter((result) => result.scraped && !result.assessment_ready).length;
   const pendingAssessments = () => props.counts?.pendingAssessments ?? scoped().filter((result) => result.assessment_ready && result.assessment_status !== 'complete').length;
   const canReassess = () => props.resultId !== undefined && scoped().some((result) => result.assessment_ready && result.assessment_status === 'complete');
+  const unscraped = () => props.counts?.unscraped ?? scoped().filter((result) => !result.scraped).length;
   const mutation = createMutation(() => ({
-    mutationFn: (request: { mode: 'enrichment' | 'assessment'; force?: boolean }) => {
-      const data = { segmentId: props.segmentId, resultId: props.resultId, filters: props.filters, force: request.force };
+    mutationFn: (request: { mode: 'extraction' | 'assessment' | 'scrape'; force?: boolean }) => {
+      const data = { segmentId: props.segmentId, resultId: props.resultId, filters: props.filters, force: request.force, mode: request.mode };
       return request.mode === 'assessment' ? startResultAssessment({ data }) : startResultEnrichment({ data });
     },
     onSuccess: (response) => { setMessage(response.error ?? ''); if (response.job) client.setQueryData(['result-enrichment'], response.job); else void status.refetch(); },
@@ -41,10 +42,10 @@ export function ResultEnrichment(props: { segmentId?: number; resultId?: number;
   const buttonClass = 'rounded-xl bg-teal-800 px-5 py-3 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50';
   return <div class="mb-5 rounded-xl border border-teal-200 bg-white p-4">
     <div class="flex flex-wrap gap-3">
-      <button type="button" class={buttonClass} disabled={unavailable() || !pending()} onClick={() => { setMessage(''); mutation.mutate({ mode: 'enrichment' }); }}>{busy() ? 'Processing…' : props.resultId !== undefined ? (pending() ? 'Enrich & assess this result' : 'Result assessed') : `Enrich & assess ${pending()} ${props.filters ? 'matching ' : ''}pending results`}</button>
-      <button type="button" class={buttonClass} disabled={unavailable() || (!pendingAssessments() && !canReassess())} onClick={() => { setMessage(''); mutation.mutate({ mode: 'assessment', force: canReassess() }); }}>{canReassess() ? 'Reassess saved sources' : props.resultId !== undefined ? 'Assess saved sources' : `Assess ${pendingAssessments()} ${props.filters ? 'matching ' : ''}enriched results`}</button>
+      <button type="button" class={buttonClass} disabled={unavailable() || !unscraped()} onClick={() => { setMessage(''); mutation.mutate({ mode: 'scrape' }); }}>{busy() ? 'Processing…' : props.resultId !== undefined ? 'Scrape this result' : `Scrape ${unscraped()} unscraped ${props.filters ? 'filtered ' : ''}results`}</button>
+      <button type="button" class={buttonClass} disabled={unavailable() || !pendingExtraction()} onClick={() => { setMessage(''); mutation.mutate({ mode: 'extraction' }); }}>{busy() ? 'Processing…' : props.resultId !== undefined ? 'Extract data from saved sources' : `Extract data from ${pendingExtraction()} ${props.filters ? 'matching ' : ''}scraped results`}</button>
+      <button type="button" class={buttonClass} disabled={unavailable() || (!pendingAssessments() && !canReassess())} onClick={() => { setMessage(''); mutation.mutate({ mode: 'assessment', force: canReassess() }); }}>{canReassess() ? 'Reassess enriched data' : props.resultId !== undefined ? 'Assess enriched data' : `Assess ${pendingAssessments()} ${props.filters ? 'matching ' : ''}enriched results`}</button>
     </div>
-    <p class="mt-3 text-xs text-slate-500">{props.resultId !== undefined ? 'Processes only this result.' : props.filters ? 'Processes all results matching the current filters across every page. The matching set is fixed when the job starts.' : `Processes all ${props.segmentId ? 'segment' : 'saved'} results, regardless of filters or pagination.`} Current assessments are skipped. Existing meaningful enrichment is reused; assessment-only work never scrapes. Uses server providers and OpenRouter quota (charges may apply). Match score and permissions are independent; human review is required and nothing is sent.</p>
     <Show when={message()}><p role="alert" class="mt-3 text-sm text-rose-800">{message()}</p></Show>
     <Show when={status.isError}><p role="alert" class="mt-3 text-sm text-rose-800">Could not load job status. <button type="button" class="underline" onClick={() => void status.refetch()}>Retry status</button></p></Show>
     <Show when={status.data}>{(job) => <p role="status" aria-live="polite" class="mt-3 text-sm">{job().status === 'running' ? processingLabel() : 'Job finished'} · {processed()}/{job().results.length} processed · {job().results.filter((result) => ['failed', 'blocked'].includes(result.status)).length} failed/blocked. Progress covers the global queue and is kept for one hour while this server stays running.</p>}</Show>

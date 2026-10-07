@@ -13,7 +13,7 @@ export function parseProcessingJob(value: unknown): ProcessingJob {
   return { version: 1, messageId: job.messageId };
 }
 
-export async function enqueueAgentRun(db: MessagingDatabase, job: ProcessingJob): Promise<"pending" | "deleted"> {
+export async function enqueueAgentRun(db: MessagingDatabase, job: ProcessingJob): Promise<{ status: "pending"; conversationId: string } | "deleted"> {
   return db.transaction(async tx => {
     // Hold a shared lock until commit so user erasure cannot race run creation.
     const [incoming] = await tx.select().from(message).where(eq(message.id, job.messageId)).for("share");
@@ -26,7 +26,7 @@ export async function enqueueAgentRun(db: MessagingDatabase, job: ProcessingJob)
     if (!intent) throw new InvalidProcessingJob();
     await tx.insert(agentRun).values({ id: crypto.randomUUID(), incomingMessageId: incoming.id })
       .onConflictDoNothing({ target: agentRun.incomingMessageId });
-    return "pending";
+    return { status: "pending", conversationId: incoming.conversationId };
   });
 }
 

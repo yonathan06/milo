@@ -4,7 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "vars": { "DISPATCH_ENABLED": "false" },
+  "vars": { "DISPATCH_ENABLED": "false", "TEST_RESPONDER_ENABLED": "false", "AGENT_ENABLED": "false" },
+  "services": [{ "binding": "AGENT", "service": "milo-whatsapp-agent" }],
+  "durable_objects": { "bindings": [{ "name": "CONVERSATIONS", "class_name": "ConversationCoordinator" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ConversationCoordinator"] }],
   "queues": {
     "producers": [{ "binding": "PROCESSING_QUEUE", "queue": "milo-whatsapp-processing" }],
     "consumers": [{

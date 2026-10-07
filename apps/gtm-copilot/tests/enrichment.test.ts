@@ -16,11 +16,12 @@ import { join } from 'node:path';
 const sources = [{ url: 'https://example.com/community', text: 'Event Professionals: Discuss event video editing.', fetchedAt: new Date().toISOString() }];
 const empty = enrichmentSchema.parse({ communityName: null, description: null, lastObservedActivity: null, memberCount: null, location: null, language: null, admins: [], publicContactRoutes: [], rulesAndPromotionPolicy: [], latestPosts: [], eventAndVideoSignals: [], outreachAngles: [], limitations: ['No sources supplied.'] });
 const valid = { ...empty, communityName: { value: 'Event Professionals', evidence: { sourceUrl: sources[0].url, quote: 'Event Professionals' } }, limitations: [] };
-function response(data: unknown) {
+function response(data: unknown) { return textResponse(JSON.stringify(data)); }
+function textResponse(text: string, finishReason: 'stop' | 'length' = 'stop') {
   return { stream: simulateReadableStream({ chunks: [
     { type: 'stream-start' as const, warnings: [] }, { type: 'text-start' as const, id: 'text' },
-    { type: 'text-delta' as const, id: 'text', delta: JSON.stringify(data) }, { type: 'text-end' as const, id: 'text' },
-    { type: 'finish' as const, finishReason: { unified: 'stop' as const, raw: undefined },
+    { type: 'text-delta' as const, id: 'text', delta: text }, { type: 'text-end' as const, id: 'text' },
+    { type: 'finish' as const, finishReason: { unified: finishReason, raw: undefined },
       usage: { inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined }, outputTokens: { total: 100, text: 100, reasoning: undefined } } },
   ] }) };
 }
@@ -51,6 +52,35 @@ test('model receives sources on both passes and empty output triggers one correc
     assert.ok(user.includes(sources[0].text));
   }
   assert.ok(JSON.stringify(model.doStreamCalls[1].prompt).includes('no evidenced facts'));
+});
+test('JSON mode corrects malformed, truncated, and schema-invalid output once', async () => {
+  for (const bad of [textResponse('{"communityName":'), textResponse('', 'length'), response({ unexpected: true })]) {
+    const model = new MockLanguageModelV4({ doStream: [bad, response(valid)] });
+    const diagnostics: WorkDiagnostic[] = [];
+    assert.equal((await extractCommunity(sources, model, undefined, e => diagnostics.push(e))).communityName?.value, 'Event Professionals');
+    assert.equal(model.doStreamCalls.length, 2);
+    const format = model.doStreamCalls[0].responseFormat;
+    assert.equal(format?.type, 'json');
+    assert.ok(format?.type === 'json' && !format.schema, 'do not send the looping provider-enforced schema');
+    assert.ok(JSON.stringify(model.doStreamCalls[0].prompt).includes('limitations'));
+    assert.ok(JSON.stringify(model.doStreamCalls[1].prompt).includes('Correction:'));
+    assert.ok(diagnostics.some(e => e.step === 'extraction.validation' && e.status === 'retrying'));
+    assert.ok(diagnostics.some(e => e.step === 'extraction.model' && e.fields?.finishReason));
+  }
+});
+test('repeated malformed JSON fails after two attempts and transport errors are not corrected', async () => {
+  const malformed = new MockLanguageModelV4({ doStream: [textResponse('{'), textResponse('{')] });
+  await assert.rejects(extractCommunity(sources, malformed), /could not parse/);
+  assert.equal(malformed.doStreamCalls.length, 2);
+  const broken = new MockLanguageModelV4({ doStream: async () => { throw new Error('Transport unavailable'); } });
+  await assert.rejects(extractCommunity(sources, broken), /Transport unavailable/);
+  assert.equal(broken.doStreamCalls.length, 1);
+});
+test('JSON mode still rejects structurally valid but fabricated evidence', async () => {
+  const fabricated = { ...valid, communityName: { ...valid.communityName, evidence: { ...valid.communityName.evidence, quote: 'Invented community' } } };
+  const model = new MockLanguageModelV4({ doStream: [response(fabricated), response(fabricated)] });
+  await assert.rejects(extractCommunity(sources, model), /not found in collected sources/);
+  assert.equal(model.doStreamCalls.length, 2);
 });
 test('streamed extraction limits input/output and reports first-token progress without logging source bodies', async () => {
   const largeSources = [{ ...sources[0], text: `${sources[0].text}\n${'Navigation boilerplate. '.repeat(2500)}` }];

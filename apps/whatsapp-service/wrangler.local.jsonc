@@ -11,8 +11,14 @@
     "WHATSAPP_APP_SECRET": "local-simulator-only-not-a-real-secret",
     "WHATSAPP_VERIFY_TOKEN": "local-simulator-token",
     "DISPATCH_ENABLED": "true",
-    "SIMULATOR_PUBLIC_ORIGIN": "https://subsection-southampton-temporal-reflect.trycloudflare.com"
+    "TEST_RESPONDER_ENABLED": "false",
+    "AGENT_ENABLED": "true",
+    "SIMULATOR_EVENTS_ENABLED": "true",
+    "ALLOW_TRYCLOUDFLARE": "true"
   },
+  "services": [{ "binding": "AGENT", "service": "milo-whatsapp-agent" }],
+  "durable_objects": { "bindings": [{ "name": "CONVERSATIONS", "class_name": "ConversationCoordinator" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ConversationCoordinator"] }],
   "queues": {
     "producers": [{ "binding": "PROCESSING_QUEUE", "queue": "milo-whatsapp-local-processing" }],
     "consumers": [{

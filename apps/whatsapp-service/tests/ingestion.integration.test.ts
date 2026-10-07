@@ -3,10 +3,12 @@ import test from "node:test";
 import { readFile, readdir } from "node:fs/promises";
 import { and, eq, sql } from "drizzle-orm";
 import { withLocalDatabase } from "@video-editor-agent/db/local";
-import { agentRun, conversation, deliveryEvent, message, outboxIntent, user, whatsappChannel } from "@video-editor-agent/db/schema";
+import { agentRun, conversation, deliveryEvent, message, outboundDelivery, outboxIntent, user, whatsappChannel } from "@video-editor-agent/db/schema";
 import { acceptEvents } from "../src/messaging/accept-events.ts";
 import { dispatchProcessing } from "../src/outbox/dispatch.ts";
 import { enqueueAgentRun } from "../src/queues/processing.ts";
+import { processConversation } from "../src/agent/process-conversation.ts";
+import { processAgentConversation } from "../src/agent/process-agent-conversation.ts";
 import type { IncomingMessage, StatusEvent } from "../src/whatsapp/normalize.ts";
 
 // Isolated schema and connection search_path: dispatch never touches existing work.
@@ -131,6 +133,28 @@ test("PostgreSQL ingestion and recoverable queue publication", { skip: !process.
         assert.ok(unattributedOwner?.acquisitionInitializedAt);
         assert.equal(unattributedOwner?.acquisitionRef, null);
       } finally { await db.delete(user).where(eq(user.phoneNumber, `+${unattributed.sender}`)); }
+
+      // Rollback includes response content, send payload/intent and run completion.
+      await assert.rejects(processConversation(interrupted, saved.conversationId), /forced rollback/);
+      assert.equal((await db.select().from(message).where(and(eq(message.conversationId, saved.conversationId), eq(message.direction, "outbound")))).length, 0);
+      assert.equal((await db.select().from(agentRun).where(eq(agentRun.incomingMessageId, saved.id)))[0]?.status, "pending");
+      // Later queue delivery first: process every earlier durable message in sequence.
+      await enqueueAgentRun(db, { version: 1, messageId: savedThird!.id });
+      const processed = await Promise.all([processConversation(db, saved.conversationId), processConversation(db, saved.conversationId)]);
+      assert.equal(processed.reduce((sum, count) => sum + count, 0), 3);
+      const replies = await db.select().from(message).where(and(eq(message.conversationId, saved.conversationId), eq(message.direction, "outbound"))).orderBy(message.sequence);
+      assert.deepEqual(replies.map(reply => reply.replyToMessageId), [saved.id, savedSecond!.id, savedThird!.id]);
+      assert.deepEqual(replies.map(reply => reply.sequence), [4n, 5n, 6n]);
+      assert.equal((await db.select().from(outboundDelivery)).length, 3);
+      assert.equal((await db.select().from(outboxIntent).where(eq(outboxIntent.kind, "send"))).length, 3);
+      await enqueueAgentRun(db, job);
+      assert.equal(await processConversation(db, saved.conversationId), 0);
+      await assert.rejects(db.update(agentRun).set({ status: "pending", responseMessageId: null, completedAt: null }).where(eq(agentRun.incomingMessageId, saved.id)));
+      await acceptEvents(db, [{ ...event, providerMessageId: crypto.randomUUID() }]);
+      await db.update(conversation).set({ status: "blocked" }).where(eq(conversation.id, saved.conversationId));
+      assert.equal(await processConversation(db, saved.conversationId), 1);
+      assert.equal((await db.select().from(agentRun).where(eq(agentRun.status, "blocked"))).length, 1);
+      assert.equal((await db.select().from(outboundDelivery)).length, 3);
     } finally {
       const [erasedMessage] = await db.select({ id: message.id }).from(message).where(eq(message.providerMessageId, event.providerMessageId));
       await db.delete(user).where(eq(user.phoneNumber, `+${sender}`));
@@ -141,5 +165,84 @@ test("PostgreSQL ingestion and recoverable queue publication", { skip: !process.
       await db.delete(deliveryEvent).where(eq(deliveryEvent.channelId, channelId));
       await db.delete(whatsappChannel).where(eq(whatsappChannel.id, channelId));
     }
+  });
+});
+
+test("queued agent turns: external inference, context, leases, fenced replies and bounded failure", { skip: !process.env.TEST_DATABASE_URL }, async () => {
+  await withFixture(async db => {
+    const channelId = crypto.randomUUID();
+    await db.insert(whatsappChannel).values({ id: channelId, businessAccountId: channelId, providerPhoneNumberId: channelId });
+    const event: IncomingMessage = {
+      kind: "message", businessAccountId: channelId, phoneNumberId: channelId, sender: "491234567890",
+      providerMessageId: crypto.randomUUID(), providerCreatedAt: new Date(), providerReplyToId: null,
+      contentType: "text", text: "First", content: { version: 1, providerType: "text" },
+    };
+    const accept = async (text: string) => {
+      const providerMessageId = crypto.randomUUID();
+      await acceptEvents(db, [{ ...event, text, providerMessageId }]);
+      return (await db.select().from(message).where(eq(message.providerMessageId, providerMessageId)))[0]!;
+    };
+    const first = await accept("First");
+    const second = await accept("Second");
+    const chatId = first.conversationId;
+    const enqueue = (id: string) => enqueueAgentRun(db, { version: 1, messageId: id });
+    let calls = 0;
+    const generate = async () => { calls++; return { text: "AI response", version: "mock-agent-v1" }; };
+    await enqueue(second.id);
+    await processAgentConversation(db, chatId, generate);
+    assert.equal(calls, 0, "later queue item must not overtake unconsumed earlier message");
+    await enqueue(first.id);
+    let later: typeof first;
+    await processAgentConversation(db, chatId, async input => {
+      calls++;
+      assert.deepEqual(input, { message: "First", history: [] });
+      // If the claim transaction were still open this would block on its locks.
+      later = await accept("Arrived during inference");
+      const duplicate = await processAgentConversation(db, chatId, generate);
+      assert.ok(duplicate.retryAfterMs! > 0);
+      assert.equal(calls, 1, "active lease prevents concurrent inference");
+      return { text: "First AI reply", version: "mock-agent-v1" };
+    });
+    await processAgentConversation(db, chatId, async input => {
+      assert.equal(input.message, "Second");
+      assert.deepEqual(input.history, [{ role: "user", content: "First" }, { role: "assistant", content: "First AI reply" }]);
+      return { text: "Second AI reply", version: "mock-agent-v1" };
+    });
+    await enqueue(first.id);
+    await processAgentConversation(db, chatId, generate);
+    assert.equal(calls, 1);
+    await enqueue(later!.id);
+    // Supersede an attempt while its external call is in flight.
+    await processAgentConversation(db, chatId, async () => {
+      await db.update(agentRun).set({ attemptToken: "replacement", leaseExpiresAt: new Date(0) })
+        .where(eq(agentRun.incomingMessageId, later!.id));
+      return { text: "Stale reply", version: "mock-agent-v1" };
+    });
+    assert.equal((await db.select().from(message).where(eq(message.direction, "outbound"))).length, 2);
+    await processAgentConversation(db, chatId, generate);
+    assert.equal((await db.select().from(message).where(eq(message.direction, "outbound"))).length, 3);
+    assert.equal((await db.select().from(outboxIntent).where(eq(outboxIntent.kind, "send"))).length, 3);
+    assert.equal((await db.select().from(outboundDelivery)).length, 3);
+    const failing = await accept("Failure");
+    await enqueue(failing.id);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await processAgentConversation(db, chatId, async () => { throw new Error("provider failure with private data"); });
+      if (attempt < 2) await db.update(agentRun).set({ leaseExpiresAt: new Date(0) }).where(eq(agentRun.incomingMessageId, failing.id));
+    }
+    const [run] = await db.select().from(agentRun).where(eq(agentRun.incomingMessageId, failing.id));
+    assert.equal(run?.status, "succeeded");
+    assert.equal(run?.attempts, 3);
+    assert.equal(run?.lastErrorCode, "agent_turn_failed");
+    assert.equal(run?.responderVersion, "agent-fallback-v1");
+    const [fallback] = await db.select().from(message).where(eq(message.id, run!.responseMessageId!));
+    assert.equal(fallback?.content.fallback, true);
+    const blocked = await accept("Block during inference");
+    await enqueue(blocked.id);
+    await processAgentConversation(db, chatId, async () => {
+      await db.update(conversation).set({ status: "blocked" }).where(eq(conversation.id, chatId));
+      return { text: "Must not be saved", version: "mock-agent-v1" };
+    });
+    assert.equal((await db.select().from(agentRun).where(eq(agentRun.incomingMessageId, blocked.id)))[0]?.status, "blocked");
+    assert.equal((await db.select().from(message).where(eq(message.direction, "outbound"))).length, 4);
   });
 });
